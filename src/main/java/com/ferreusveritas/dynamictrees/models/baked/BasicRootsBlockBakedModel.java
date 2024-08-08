@@ -1,5 +1,6 @@
 package com.ferreusveritas.dynamictrees.models.baked;
 
+import com.ferreusveritas.dynamictrees.block.branch.BasicRootsBlock;
 import com.ferreusveritas.dynamictrees.client.ModelUtils;
 import com.ferreusveritas.dynamictrees.models.modeldata.ModelConnections;
 import com.google.common.collect.Maps;
@@ -29,7 +30,7 @@ import java.util.function.Function;
 @OnlyIn(Dist.CLIENT)
 public class BasicRootsBlockBakedModel extends BasicBranchBlockBakedModel {
 
-    private final BakedModel[][] sleeveFaces = new BakedModel[6][7];
+    private final BakedModel[][] sleeveFaces = new BakedModel[6][8];
 
     public BasicRootsBlockBakedModel(IGeometryBakingContext customData, ResourceLocation modelLocation, ResourceLocation barkTextureLocation, ResourceLocation ringsTextureLocation,
                                      Function<Material, TextureAtlasSprite> spriteGetter) {
@@ -41,10 +42,8 @@ public class BasicRootsBlockBakedModel extends BasicBranchBlockBakedModel {
         if (getRenderType() == RenderType.solid()){
             for (int i = 0; i < 8; i++) {
                 int radius = i + 1;
-                if (radius < 8) {
-                    for (Direction dir : Direction.values()) {
-                        sleeveFaces[dir.get3DDataValue()][i] = bakeSleeveFace(radius, dir, ringsTexture);
-                    }
+                for (Direction dir : Direction.values()) {
+                    sleeveFaces[dir.get3DDataValue()][i] = bakeSleeveFace(radius, dir, ringsTexture);
                 }
             }
         }
@@ -133,12 +132,10 @@ public class BasicRootsBlockBakedModel extends BasicBranchBlockBakedModel {
             connections = connectionsData.getAllRadii();
         }
 
-        if (coreRadius != 8) {
-            final int idx = side.get3DDataValue();
-            final int connRadius = connections[idx];
-            if (connRadius > 0) {
-                quadsList.addAll(sleeveFaces[idx][connRadius - 1].getQuads(state, side, rand, extraData, renderType));
-            }
+        final int idx = side.get3DDataValue();
+        final int connRadius = connections[idx];
+        if (connRadius > 0) {
+            quadsList.addAll(sleeveFaces[idx][connRadius - 1].getQuads(state, side, rand, extraData, renderType));
         }
 
         return quadsList;

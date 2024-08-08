@@ -490,12 +490,6 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
     //////////////////////////////
 
     @Override
-    public VoxelShape getOcclusionShape(BlockState pState, BlockGetter pLevel, BlockPos pPos) {
-        if (pState.getValue(LAYER) == Layer.EXPOSED) return Shapes.empty();
-        return super.getOcclusionShape(pState, pLevel, pPos);
-    }
-
-    @Override
     public VoxelShape getCollisionShape(BlockState pState, BlockGetter pLevel, BlockPos pPos, CollisionContext pContext) {
         if (isFullBlock(pState)) {
             VoxelShape fullShape = Shapes.block();
@@ -536,6 +530,33 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
 
         // If adjacent block is not loaded assume there is no connection.
         return blockState == null ? 0 : TreeHelper.getTreePart(blockState).getRadiusForConnection(blockState, level, deltaPos, this, side, radius);
+    }
+
+    @Override
+    public VoxelShape getOcclusionShape(BlockState pState, BlockGetter pLevel, BlockPos pPos) {
+        if (isTransparent(pState)){
+            return Shapes.empty();
+        }
+        return super.getOcclusionShape(pState, pLevel, pPos);
+    }
+
+    @Override
+    public VoxelShape getVisualShape(BlockState pState, BlockGetter pReader, BlockPos pPos, CollisionContext pContext) {
+        if (isTransparent(pState)){
+            return Shapes.empty();
+        }
+        return super.getVisualShape(pState, pReader, pPos, pContext);
+    }
+
+    @Override
+    public boolean skipRendering(BlockState pState, BlockState pAdjacentBlockState, Direction pSide) {
+        return (pAdjacentBlockState.is(this) && pAdjacentBlockState.getValue(LAYER).ordinal() >= pState.getValue(LAYER).ordinal())
+                || super.skipRendering(pState, pAdjacentBlockState, pSide);
+    }
+
+    public static boolean isTransparent (BlockState state){
+        return state.getBlock() instanceof BasicRootsBlock
+                && state.getValue(LAYER) == Layer.EXPOSED;
     }
 
     //////////////////////////////
