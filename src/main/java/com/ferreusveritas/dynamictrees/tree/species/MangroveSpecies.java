@@ -66,7 +66,7 @@ public class MangroveSpecies extends Species {
     public MangroveSpecies(ResourceLocation name, Family family, LeavesProperties leavesProperties) {
         super(name, family, leavesProperties);
         if (!(family instanceof MangroveFamily)) {
-            throw new RuntimeException("Family " + family.getRegistryName() + " for mangrove species " + getRegistryName() + "is not of type "+ MangroveFamily.class);
+            throw new RuntimeException("Family " + family.getRegistryName() + " for mangrove species " + getRegistryName() + " is not of type "+ MangroveFamily.class);
         }
     }
 

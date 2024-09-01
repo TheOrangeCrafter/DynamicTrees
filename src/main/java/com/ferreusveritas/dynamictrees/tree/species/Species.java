@@ -108,6 +108,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.registries.ForgeRegistries;
+import net.minecraftforge.server.ServerLifecycleHooks;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 
@@ -576,6 +577,11 @@ public class Species extends RegistryEntry<Species> implements Resettable<Specie
     }
 
     public boolean shouldOverrideCommon(final BlockGetter level, final BlockPos trunkPos) {
+        //Common Override test will fail if the server has not loaded yet
+        if (ServerLifecycleHooks.getCurrentServer() == null) {
+            LogManager.getLogger().warn("shouldOverrideCommon was called before the server was loaded. This should not happen.");
+            return false;
+        }
         return this.hasCommonOverride() && this.commonOverride.test(level, trunkPos);
     }
 

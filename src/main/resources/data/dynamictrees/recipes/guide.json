@@ -1,12 +1,27 @@
 {
-  "type": "patchouli:shapeless_book_recipe",
-  "ingredients": [
+  "type": "forge:conditional",
+  "recipes": [
     {
-      "item": "minecraft:book"
+      "conditions": [
+        {
+          "type": "forge:mod_loaded",
+          "modid": "patchouli"
+        }
+      ],
+      "recipe": {
+        "type": "patchouli:shapeless_book_recipe",
+        "ingredients": [
+          {
+            "item": "minecraft:book"
+          },
+          {
+            "tag": "dynamictrees:seeds"
+          }
+        ],
+        "book": "dynamictrees:guide"
+      }
     },
     {
-      "tag": "dynamictrees:seeds"
     }
-  ],
-  "book": "dynamictrees:guide"
+  ]
 }

@@ -38,6 +38,10 @@ public final class JsonPropertyAppliers<O> implements PropertyAppliers<O, JsonEl
 
     @Override
     public PropertyApplierResult apply(final O object, final String key, final JsonElement jsonElement) {
+        if (jsonElement == null){
+            return PropertyApplierResult.failure("Critical Error: TreePack properties could not be applied, jsonElement was null! This should not happen D:");
+        }
+
         // If the element is a comment, ignore it and move onto next entry.
         if (JsonHelper.isComment(jsonElement)) {
             return PropertyApplierResult.success();

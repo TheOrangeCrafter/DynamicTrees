@@ -10,10 +10,13 @@ import com.ferreusveritas.dynamictrees.util.function.TetraFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Bee;
 import net.minecraft.world.level.Level;
@@ -25,6 +28,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.Tags;
 import org.apache.commons.lang3.tuple.Pair;
@@ -95,7 +99,7 @@ public class BeeNestGenFeature extends GenFeature {
         final LevelAccessor world = context.level();
         final BlockPos rootPos = context.pos();
         return world.getRandom().nextFloat() <= configuration.get(WORLD_GEN_CHANCE_FUNCTION).apply(world, rootPos) &&
-                this.placeBeeNestInValidPlace(configuration, world, rootPos, true);
+                this.placeBeeNestInValidPlace(configuration, world, rootPos, true, context.random());
     }
 
     @Override
@@ -105,10 +109,10 @@ public class BeeNestGenFeature extends GenFeature {
             return false;
         }
 
-        return this.placeBeeNestInValidPlace(configuration, context.level(), context.pos(), false);
+        return this.placeBeeNestInValidPlace(configuration, context.level(), context.pos(), false, context.random());
     }
 
-    private boolean placeBeeNestInValidPlace(GenFeatureConfiguration configuration, LevelAccessor world, BlockPos rootPos, boolean worldGen) {
+    private boolean placeBeeNestInValidPlace(GenFeatureConfiguration configuration, LevelAccessor world, BlockPos rootPos, boolean worldGen, RandomSource random) {
         Block nestBlock = configuration.get(NEST_BLOCK);
 
         int treeHeight = getTreeHeight(world, rootPos, configuration.get(MAX_HEIGHT));
@@ -128,38 +132,28 @@ public class BeeNestGenFeature extends GenFeature {
             //There is always AT LEAST one valid direction, since if there were none the pos would not have been added to validSpaces
             Direction chosenDir = chosenSpace.getValue().get(world.getRandom().nextInt(chosenSpace.getValue().size()));
 
-            return placeBeeNestWithBees(world, nestBlock, chosenSpace.getKey(), chosenDir, worldGen);
+            return placeBeeNestWithBees(world, nestBlock, chosenSpace.getKey(), chosenDir, worldGen, random);
         }
         return false;
     }
 
-    private boolean placeBeeNestWithBees(LevelAccessor world, Block nestBlock, BlockPos pos, Direction faceDir, boolean worldGen) {
-        int honeyLevel = worldGen ? world.getRandom().nextInt(6) : 0;
+    private boolean placeBeeNestWithBees(LevelAccessor world, Block nestBlock, BlockPos pos, Direction faceDir, boolean worldGen, RandomSource random) {
         BlockState nestState = nestBlock.defaultBlockState();
         if (nestState.hasProperty(BeehiveBlock.FACING)) {
             nestState = nestState.setValue(BeehiveBlock.FACING, faceDir);
         }
-        if (nestState.hasProperty(BeehiveBlock.HONEY_LEVEL)) {
-            nestState = nestState.setValue(BeehiveBlock.HONEY_LEVEL, honeyLevel);
-        }
-        // Sets the nest block, but the bees still need to be added.
-        world.setBlock(pos, nestState, 2);
-        BlockEntity blockEntity = world.getBlockEntity(pos);
-        // Populates the bee nest with 3 bees if the nest was generated, or with 2-3 bees if it was grown.
-        if (blockEntity instanceof BeehiveBlockEntity) {
-            BeehiveBlockEntity beehivetileentity = (BeehiveBlockEntity) blockEntity;
-            Level thisWorld = worldFromIWorld(world);
-            if (thisWorld == null) {
-                return false;
+        world.setBlock(pos, nestState, 3);
+        world.getBlockEntity(pos, BlockEntityType.BEEHIVE).ifPresent((blockEntity) -> {
+            int j = 2 + random.nextInt(2);
+
+            for(int k = 0; k < j; ++k) {
+                CompoundTag compoundtag = new CompoundTag();
+                compoundtag.putString("id", BuiltInRegistries.ENTITY_TYPE.getKey(EntityType.BEE).toString());
+                blockEntity.storeBee(compoundtag, random.nextInt(599), false);
             }
-            int beeCount = worldGen ? 3 : 2 + world.getRandom().nextInt(2);
-            for (int i = 0; i < beeCount; ++i) {
-                Bee beeEntity = new Bee(EntityType.BEE, thisWorld);
-                beehivetileentity.addOccupantWithPresetTicks(beeEntity, false, world.getRandom().nextInt(599));
-            }
-            return true;
-        }
-        return false;
+
+        });
+        return true;
     }
 
     //This just fetches a World instance from an IWorld instance, since IWorld cannot be used to create bees.

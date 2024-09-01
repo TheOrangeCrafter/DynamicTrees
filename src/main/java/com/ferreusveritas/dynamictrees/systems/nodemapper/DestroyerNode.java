@@ -41,7 +41,7 @@ public class DestroyerNode extends FindEndsNode {
         if (BranchConnectables.getConnectionRadiusForBlock(state, level, pos, fromDir == null ? null : fromDir.getOpposite()) > 0) {
             if (player != null && level instanceof Level) {
                 BlockEntity te = level.getBlockEntity(pos);
-                state.getBlock().onDestroyedByPlayer(state, (Level) level, pos, player, true, level.getFluidState(pos));
+                state.getBlock().onDestroyedByPlayer(state, (Level) level, pos, player, false, level.getFluidState(pos));
                 state.getBlock().playerDestroy((Level) level, player, pos, state, te, player.getMainHandItem());
             } else {
                 level.setBlock(pos, BlockStates.AIR, 0);

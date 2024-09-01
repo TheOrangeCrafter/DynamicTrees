@@ -3,6 +3,7 @@ package com.ferreusveritas.dynamictrees.api.resource;
 import com.google.common.collect.Maps;
 import net.minecraft.resources.ResourceLocation;
 
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Supplier;
 
 /**
@@ -19,11 +20,11 @@ public interface ResourceCollector<R> {
     void clear();
 
     static <R> ResourceCollector<R> unordered() {
-        return new SimpleResourceCollector<>(Maps::newHashMap);
+        return new SimpleResourceCollector<>(Maps::newConcurrentMap);
     }
 
     static <R> ResourceCollector<R> ordered() {
-        return new SimpleResourceCollector<>(Maps::newLinkedHashMap);
+        return new SimpleResourceCollector<>(ConcurrentSkipListMap::new);
     }
 
 }

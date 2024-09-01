@@ -9,6 +9,7 @@ import com.ferreusveritas.dynamictrees.init.DTRegistries;
 import com.ferreusveritas.dynamictrees.systems.genfeature.GenFeatures;
 import com.ferreusveritas.dynamictrees.tree.family.Family;
 import com.ferreusveritas.dynamictrees.tree.family.MangroveFamily;
+import com.ferreusveritas.dynamictrees.tree.family.NetherFungusFamily;
 import com.ferreusveritas.dynamictrees.util.CommonVoxelShapes;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -38,8 +39,8 @@ public class NetherFungusSpecies extends Species {
 
     public NetherFungusSpecies(ResourceLocation name, Family family, LeavesProperties leavesProperties) {
         super(name, family, leavesProperties);
-        if (!(family instanceof MangroveFamily)) {
-            LogManager.getLogger().warn("Family " + family.getRegistryName() + " for nether fungus species " + getRegistryName() + "is not of type "+ NetherFungusSpecies.class);
+        if (!(family instanceof NetherFungusFamily)) {
+            LogManager.getLogger().warn("Family " + family.getRegistryName() + " for nether fungus species " + getRegistryName() + " is not of type "+ NetherFungusFamily.class);
         }
         this.setSaplingShape(CommonVoxelShapes.SAPLING);
     }
