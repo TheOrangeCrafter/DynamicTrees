@@ -111,7 +111,7 @@ public class AerialRootsSoilProperties extends SoilProperties {
             if (up.getBlock() instanceof BlockWithDynamicHardness upBlock){
                 hardness = upBlock.getHardness(up, level, pos.above());
             }
-            return hardness * DTConfigs.ROOTY_BLOCK_HARDNESS_MULTIPLIER.get());
+            return (float)(hardness * DTConfigs.ROOTY_BLOCK_HARDNESS_MULTIPLIER.get());
         }
 
         @Override
