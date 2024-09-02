@@ -9,7 +9,7 @@ import com.ferreusveritas.dynamictrees.api.treedata.TreePart;
 import com.ferreusveritas.dynamictrees.block.OffsetablePodBlock;
 import com.ferreusveritas.dynamictrees.block.leaves.LeavesProperties;
 import com.ferreusveritas.dynamictrees.block.rooty.AerialRootsSoilProperties;
-import com.ferreusveritas.dynamictrees.data.DTBlockTags;
+import com.ferreusveritas.dynamictrees.block.rooty.RootyBlock;
 import com.ferreusveritas.dynamictrees.entity.FallingTreeEntity;
 import com.ferreusveritas.dynamictrees.event.FutureBreak;
 import com.ferreusveritas.dynamictrees.growthlogic.context.DirectionSelectionContext;
@@ -67,11 +67,13 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.common.ForgeMod;
+import net.minecraftforge.common.IPlantable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.annotation.Nonnull;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlock {
@@ -443,6 +445,16 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
         return super.getDestroyProgress(pState, pPlayer, pLevel, pPos);
     }
 
+    @Override
+    public boolean canSustainPlant(BlockState state, BlockGetter world, BlockPos pos, Direction facing, IPlantable plantable) {
+        if (state.getValue(LAYER) == Layer.COVERED){
+            AtomicBoolean canSustain = new AtomicBoolean(false);
+            Layer.COVERED.getPrimitive(getFamily()).ifPresent(block -> canSustain.set(block.canSustainPlant(block.defaultBlockState(), world, pos, facing, plantable)));
+            return canSustain.get();
+        }
+        return super.canSustainPlant(state, world, pos, facing, plantable);
+    }
+
     //////////////////////////////
     // ROT
     //////////////////////////////
@@ -656,8 +668,13 @@ public class BasicRootsBlock extends BranchBlock implements SimpleWaterloggedBlo
             BlockState rootState = level.getBlockState(signal.rootPos);
             if (rootState.getBlock() instanceof AerialRootsSoilProperties.RootRootyBlock rootyRoot){
                 rootThickness = Math.min(rootyRoot.getRadius(rootState), MAX_RADIUS);
+            } else if (rootState.getBlock() instanceof RootyBlock rooty){
+                Direction dir = rooty.getTrunkDirection(level, signal.rootPos);
+                BlockPos treePos = signal.rootPos.relative(dir);
+                if (TreeHelper.isBranch(level.getBlockState(treePos)))
+                    rootThickness = TreeHelper.getRadius(level, treePos);
             }
-            int maxRadius = Math.min(species.getMaxBranchRadius(), rootThickness);
+            int maxRadius = Math.min(MAX_RADIUS, Math.min(species.getMaxBranchRadius(), rootThickness));
 
             // The new branch should be the square root of all the sums of the areas of the branches coming into it.
             // But it shouldn't be smaller than it's current size(prevents the instant slimming effect when chopping off branches)

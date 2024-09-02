@@ -112,6 +112,7 @@ import net.minecraftforge.server.ServerLifecycleHooks;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -1353,6 +1354,18 @@ public class Species extends RegistryEntry<Species> implements Resettable<Specie
 
     public boolean isPlantableOnFluid() {
         return plantableOnFluid;
+    }
+
+    /**
+     * Allows the species to handle a custom action for when the soil block is destroyed
+     * @param level
+     * @param rootPos
+     * @param state
+     * @param player
+     * @return TRUE if the action is handled, FALSE to continue with default behavior
+     */
+    public boolean soilDestroyAction (Level level, @Nonnull BlockPos rootPos, BlockState state, @Nonnull Player player){
+        return false;
     }
 
     //////////////////////////////

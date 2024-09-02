@@ -44,6 +44,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraft.world.level.material.PushReaction;
 import net.minecraft.world.level.storage.loot.LootParams;
@@ -107,22 +109,22 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     @Override
     public SoundType getSoundType(BlockState state, LevelReader level, BlockPos pos, @Nullable Entity entity) {
-        return getPrimitiveSoilBlock().getSoundType(getDecayBlockState(state, level, pos), level, pos, entity);
+        return getPrimitiveSoilBlock().getSoundType(getPrimitiveSoilState(state), level, pos, entity);
     }
 
     @Override
     public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
-        return getPrimitiveSoilBlock().getLightEmission(getDecayBlockState(state, level, pos), level, pos);
+        return getPrimitiveSoilBlock().getLightEmission(getPrimitiveSoilState(state), level, pos);
     }
 
     @Override
     public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
-        return getPrimitiveSoilBlock().propagatesSkylightDown(getDecayBlockState(state, level, pos), level, pos);
+        return getPrimitiveSoilBlock().propagatesSkylightDown(getPrimitiveSoilState(state), level, pos);
     }
 
     @Override
     public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) {
-        return getPrimitiveSoilBlock().getLightBlock(getDecayBlockState(state, level, pos), level, pos);
+        return getPrimitiveSoilBlock().getLightBlock(getPrimitiveSoilState(state), level, pos);
     }
 
     @Override
@@ -132,7 +134,7 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        return getPrimitiveSoilBlock().getShape(getDecayBlockState(state, level, pos), level, pos, context);
+        return getPrimitiveSoilBlock().getShape(getPrimitiveSoilState(state), level, pos, context);
     }
 
     @Override
@@ -142,7 +144,7 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     @Override
     public float getExplosionResistance(BlockState state, BlockGetter level, BlockPos pos, Explosion explosion) {
-        return getPrimitiveSoilBlock().getExplosionResistance(getDecayBlockState(state, level, pos), level, pos, explosion);
+        return getPrimitiveSoilBlock().getExplosionResistance(getPrimitiveSoilState(state), level, pos, explosion);
     }
 
     @Override
@@ -157,12 +159,12 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     @Override
     public int getFireSpreadSpeed(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
-        return getPrimitiveSoilBlock().getFireSpreadSpeed(getDecayBlockState(state, level, pos), level, pos, face);
+        return getPrimitiveSoilBlock().getFireSpreadSpeed(getPrimitiveSoilState(state), level, pos, face);
     }
 
     @Override
     public boolean isFireSource(BlockState state, LevelReader level, BlockPos pos, Direction side) {
-        return getPrimitiveSoilBlock().isFireSource(getDecayBlockState(state, level, pos), level, pos, side);
+        return getPrimitiveSoilBlock().isFireSource(getPrimitiveSoilState(state), level, pos, side);
     }
 
     @Nonnull
@@ -173,12 +175,12 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     @Override
     public ItemStack getCloneItemStack(BlockState state, HitResult target, BlockGetter level, BlockPos pos, Player player) {
-        return getPrimitiveSoilBlock().getCloneItemStack(getDecayBlockState(state, level, pos), target, level, pos, player);
+        return getPrimitiveSoilBlock().getCloneItemStack(getPrimitiveSoilState(state), target, level, pos, player);
     }
 
     @Override
     public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
-        return (float) (getDecayBlockState(state, level, pos).getDestroySpeed(level, pos) * DTConfigs.ROOTY_BLOCK_HARDNESS_MULTIPLIER.get());
+        return (float) (getPrimitiveSoilState(state).getDestroySpeed(level, pos) * DTConfigs.ROOTY_BLOCK_HARDNESS_MULTIPLIER.get());
     }
 
     ///////////////////////////////////////////
@@ -314,9 +316,19 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
     }
 
     @Override
-    public void playerWillDestroy(Level level, @Nonnull BlockPos pos, BlockState state, @Nonnull Player player) {
-        this.destroyTree(level, pos, player);
-        super.playerWillDestroy(level, pos, state, player);
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, FluidState fluid) {
+        if (getSpecies(state, level, pos).soilDestroyAction(level, pos, state, player)){
+            this.spawnDestroyParticles(level, player, pos, state);
+            level.gameEvent(player, GameEvent.BLOCK_CHANGE, pos);
+            return false;
+        }
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+    }
+
+    @Override
+    public void playerWillDestroy(Level level, @Nonnull BlockPos rootPos, BlockState state, @Nonnull Player player) {
+        this.destroyTree(level, rootPos, player);
+        super.playerWillDestroy(level, rootPos, state, player);
     }
 
     @Override
@@ -324,6 +336,16 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
         destroyTree(level, pos);
         super.onBlockExploded(state, level, pos, explosion);
     }
+
+    /**
+     * Usually does nothing as rooty blocks usually don't have radius.
+     * Overriden by #AerialRootsSoilProperties
+     * @param level
+     * @param state
+     * @param pos
+     * @param flags
+     */
+    public int updateRadius(LevelAccessor level, BlockState state, BlockPos pos, int flags, boolean force){ return getRadius(state); }
 
     ///////////////////////////////////////////
     // TREE STUFF

@@ -4,6 +4,7 @@ import com.ferreusveritas.dynamictrees.api.TreeHelper;
 import com.ferreusveritas.dynamictrees.api.network.NodeInspector;
 import com.ferreusveritas.dynamictrees.api.treedata.TreePart;
 import com.ferreusveritas.dynamictrees.block.branch.BranchBlock;
+import com.ferreusveritas.dynamictrees.block.rooty.RootyBlock;
 import com.ferreusveritas.dynamictrees.tree.species.Species;
 import com.ferreusveritas.dynamictrees.util.SimpleVoxmap;
 import net.minecraft.core.BlockPos;
@@ -114,6 +115,11 @@ public class InflatorNode implements NodeInspector {
 
             last = pos;
 
+        } else {
+            RootyBlock rooty = TreeHelper.getRooty(state);
+            if (rooty != null){
+                rooty.updateRadius(level, state, pos, 2, false);
+            }
         }
 
         return false;

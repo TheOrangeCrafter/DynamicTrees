@@ -8,6 +8,7 @@ import com.ferreusveritas.dynamictrees.block.BlockWithDynamicHardness;
 import com.ferreusveritas.dynamictrees.block.branch.BranchBlock;
 import com.ferreusveritas.dynamictrees.data.DTBlockTags;
 import com.ferreusveritas.dynamictrees.entity.FallingTreeEntity;
+import com.ferreusveritas.dynamictrees.init.DTConfigs;
 import com.ferreusveritas.dynamictrees.systems.nodemapper.NetVolumeNode;
 import com.ferreusveritas.dynamictrees.systems.nodemapper.RootIntegrityNode;
 import com.ferreusveritas.dynamictrees.tree.family.MangroveFamily;
@@ -26,7 +27,6 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SimpleWaterloggedBlock;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -34,7 +34,6 @@ import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
-import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.BlockHitResult;
@@ -66,24 +65,6 @@ public class AerialRootsSoilProperties extends SoilProperties {
     @Override
     protected RootyBlock createBlock(BlockBehaviour.Properties blockProperties) {
         return new RootRootyBlock(this, blockProperties);
-    }
-
-    public static int updateRadius (LevelAccessor level, BlockState state, BlockPos pos, int flags) {
-        return updateRadius(level, state, pos, flags, false);
-    }
-    public static int updateRadius (LevelAccessor level, BlockState state, BlockPos pos, int flags, boolean force){
-        if (!(state.getBlock() instanceof RootRootyBlock)) return 8;
-        int upRad = TreeHelper.getRadius(level, pos.above());
-        if (upRad > 0){
-            int thisRad = state.getValue(RootRootyBlock.RADIUS);
-            if (upRad != thisRad || force){
-                int newRadius = Math.min(upRad, 8);
-                level.setBlock(pos, state.setValue(RootRootyBlock.RADIUS, newRadius), flags);
-                return newRadius;
-            }
-            return upRad;
-        }
-        return 0;
     }
 
     @Override
@@ -126,24 +107,22 @@ public class AerialRootsSoilProperties extends SoilProperties {
         @Override
         public float getHardness(BlockState state, BlockGetter level, BlockPos pos) {
             BlockState up = level.getBlockState(pos.above());
+            float hardness = 2.0f;
             if (up.getBlock() instanceof BlockWithDynamicHardness upBlock){
-                return upBlock.getHardness(up, level, pos.above());
+                hardness = upBlock.getHardness(up, level, pos.above());
             }
-            return 2.0F;
-        }
-
-        @Override
-        public BlockState getDecayBlockState(BlockState state, BlockGetter level, BlockPos pos) {
-            if (state.hasProperty(WATERLOGGED) && !state.getValue(WATERLOGGED)) {
-                return Blocks.AIR.defaultBlockState();
-            }
-            return super.getDecayBlockState(state, level, pos);
+            return hardness * DTConfigs.ROOTY_BLOCK_HARDNESS_MULTIPLIER.get());
         }
 
         @Override
         public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
             int radius = state.getValue(RADIUS);
             return Block.box(8-radius,0,8-radius,radius+8,16,radius+8);
+        }
+
+        @Override
+        public int getRadius(BlockState state) {
+            return state.getValue(RADIUS);
         }
 
         public boolean isStructurallyStable(LevelAccessor level, BlockPos rootPos){
@@ -155,14 +134,8 @@ public class AerialRootsSoilProperties extends SoilProperties {
         }
 
         @Override
-        public MapSignal startAnalysis(LevelAccessor level, BlockPos rootPos, MapSignal signal) {
-            updateRadius(level, level.getBlockState(rootPos), rootPos, 3);
-            return super.startAnalysis(level, rootPos, signal);
-        }
-
-        @Override
         public void neighborChanged(BlockState pState, Level pLevel, BlockPos pPos, Block pBlock, BlockPos pFromPos, boolean pIsMoving) {
-            updateRadius(pLevel, pState, pPos, 3);
+            updateRadius(pLevel, pState, pPos, 3, false);
             super.neighborChanged(pState, pLevel, pPos, pBlock, pFromPos, pIsMoving);
         }
 
@@ -187,6 +160,13 @@ public class AerialRootsSoilProperties extends SoilProperties {
                 return true;
             }
             return false;
+        }
+
+        public BlockState getDecayBlockState(BlockState state, BlockGetter level, BlockPos pos) {
+            if (state.hasProperty(WATERLOGGED)) {
+                return getFluidState(state).createLegacyBlock();
+            }
+            return super.getDecayBlockState(state, level, pos);
         }
 
         /**
@@ -252,6 +232,21 @@ public class AerialRootsSoilProperties extends SoilProperties {
             }
         }
 
+        @Override
+        public int updateRadius (LevelAccessor level, BlockState state, BlockPos pos, int flags, boolean force) {
+            if (!(state.getBlock() instanceof RootRootyBlock)) return 8;
+            int upRad = TreeHelper.getRadius(level, pos.above());
+            if (upRad > 0){
+                int thisRad = state.getValue(RootRootyBlock.RADIUS);
+                if (upRad != thisRad || force){
+                    int newRadius = Math.min(upRad, 8);
+                    level.setBlock(pos, state.setValue(RootRootyBlock.RADIUS, newRadius), flags);
+                    return newRadius;
+                }
+                return upRad;
+            }
+            return 0;
+        }
     }
 
     public List<TagKey<Block>> defaultSoilBlockTags() {

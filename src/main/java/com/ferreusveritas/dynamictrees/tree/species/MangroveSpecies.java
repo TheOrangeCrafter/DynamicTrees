@@ -23,13 +23,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.gameevent.GameEvent;
 
+import javax.annotation.Nonnull;
 import java.util.List;
 
 public class MangroveSpecies extends Species {
@@ -59,10 +62,6 @@ public class MangroveSpecies extends Species {
         this.updateSoilOnWaterRadius = updateSoilOnWaterRadius;
     }
 
-    public int getUpdateSoilOnWaterRadius() {
-        return updateSoilOnWaterRadius;
-    }
-
     public MangroveSpecies(ResourceLocation name, Family family, LeavesProperties leavesProperties) {
         super(name, family, leavesProperties);
         if (!(family instanceof MangroveFamily)) {
@@ -81,9 +80,9 @@ public class MangroveSpecies extends Species {
     public boolean placeRootyDirtBlock(LevelAccessor level, BlockPos rootPos, int fertility) {
         BlockState dirtState = level.getBlockState(rootPos);
         Block dirt = dirtState.getBlock();
-
-        if ((!SoilHelper.isSoilRegistered(dirt) && !(dirt instanceof RootyBlock)) || isWater(dirtState)) {
-            //soil is not valid, or water so we place default roots
+        boolean worldGenOnWater = (isWater(dirtState) && fertility == 0);
+        if (!SoilHelper.isSoilRegistered(dirt) && !(dirt instanceof RootyBlock) || worldGenOnWater) {
+            //soil is not valid so we place default roots
             level.setBlock(rootPos, getFamily().getDefaultSoil().getSoilState(dirtState, fertility, this.doesRequireTileEntity(level, rootPos)), 3);
 
             BlockEntity tileEntity = level.getBlockEntity(rootPos);
@@ -96,26 +95,38 @@ public class MangroveSpecies extends Species {
         return super.placeRootyDirtBlock(level, rootPos, fertility);
     }
 
+    private boolean replaceSoilBlock (BlockState soilState, Level level, BlockPos rootPos, int fertility){
+        if (soilState.getBlock() instanceof RootyBlock rootyBlock
+                && !rootyBlock.getSoilProperties().equals(getFamily().getDefaultSoil())){
+            BlockEntity TE = level.getBlockEntity(rootPos);
+            BlockState rootCollarState = getFamily().getDefaultSoil().getSoilState(rootyBlock.getPrimitiveSoilState(soilState), fertility, soilState.getValue(RootyBlock.IS_VARIANT));
+            getFamily().getDefaultSoil().getBlock().ifPresent(root -> root.updateRadius(level, rootCollarState, rootPos, 3, true));
+            if (TE != null){
+                level.setBlockEntity(TE);
+                if (TE instanceof SpeciesBlockEntity speciesTE) {
+                    speciesTE.setSpecies(this);
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean postGrow(Level level, BlockPos rootPos, BlockPos treePos, int fertility, boolean natural) {
         int radius = TreeHelper.getRadius(level, treePos);
         BlockState soilState = level.getBlockState(rootPos);
         if (radius >= 8 || (isWater(soilState) && radius >= updateSoilOnWaterRadius)) {
-            if (soilState.getBlock() instanceof RootyBlock rootyBlock
-                    && !rootyBlock.getSoilProperties().equals(getFamily().getDefaultSoil())){
-                BlockEntity TE = level.getBlockEntity(treePos);
-                BlockState rootCollarState = getFamily().getDefaultSoil().getSoilState(rootyBlock.getPrimitiveSoilState(soilState), fertility, soilState.getValue(RootyBlock.IS_VARIANT));
-                AerialRootsSoilProperties.updateRadius(level, rootCollarState, rootPos, 3, true);
-                if (TE != null){
-                    level.setBlockEntity(TE);
-                    if (TE instanceof SpeciesBlockEntity speciesTE) {
-                        speciesTE.setSpecies(this);
-                    }
-                }
-
-            }
+            replaceSoilBlock(soilState, level, rootPos, fertility);
         }
         return super.postGrow(level, rootPos, treePos, fertility, natural);
+    }
+
+    public boolean soilDestroyAction(Level level, @Nonnull BlockPos rootPos, BlockState state, @Nonnull Player player){
+        if (state.hasProperty(RootyBlock.FERTILITY)) {
+            return replaceSoilBlock(state, level, rootPos, state.getValue(RootyBlock.FERTILITY));
+        }
+        return false;
     }
 
     //////////////////////
@@ -127,7 +138,7 @@ public class MangroveSpecies extends Species {
         if (branchState.getBlock() instanceof BasicRootsBlock){
             if (radius == 0) return 0;
             if (branchState.getValue(BlockStateProperties.WATERLOGGED)) return 0;
-            return 0.3f + ((1f / (radius * (branchState.getValue(BlockStateProperties.WATERLOGGED) ? 3f : 1f) )));
+            return 0.2f + ((1f / (8 + radius * 4f)));
         }
         return super.rotChance(level, pos, rand, radius);
     }

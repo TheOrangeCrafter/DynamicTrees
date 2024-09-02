@@ -5,6 +5,7 @@ import com.ferreusveritas.dynamictrees.api.network.MapSignal;
 import com.ferreusveritas.dynamictrees.api.network.NodeInspector;
 import com.ferreusveritas.dynamictrees.block.branch.BranchBlock;
 import com.ferreusveritas.dynamictrees.block.rooty.AerialRootsSoilProperties;
+import com.ferreusveritas.dynamictrees.block.rooty.RootyBlock;
 import com.ferreusveritas.dynamictrees.systems.nodemapper.CoderNode;
 import com.ferreusveritas.dynamictrees.systems.nodemapper.FindEndsNode;
 import com.ferreusveritas.dynamictrees.tree.species.MangroveSpecies;
@@ -63,9 +64,9 @@ public class RootsJoCode extends JoCode {
 
         int rootRadius;
         BlockState rootState = level.getBlockState(context.rootPos());
-        if (!(rootState.getBlock() instanceof AerialRootsSoilProperties.RootRootyBlock) && species instanceof MangroveSpecies mangroveSpecies)
-            rootRadius = mangroveSpecies.getUpdateSoilOnWaterRadius();
-        else rootRadius = AerialRootsSoilProperties.updateRadius(level, rootState, context.rootPos(), 2);
+        if (rootState.getBlock() instanceof RootyBlock rooty){
+            rootRadius = rooty.updateRadius(level, rootState, context.rootPos(), 2, false);
+        } else rootRadius = 8;
 
         // Make the root branch structure.
         this.generateFork(level, species, 0, rootPos, false);
