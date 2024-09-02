@@ -36,8 +36,8 @@ public final class VoxelShapeDeserialiser implements JsonDeserialiser<VoxelShape
             shape = Shapes.or(
                     JsonDeserialisers.AABB.deserialise(element)
                             .map(Shapes::create)
-                            .orElseThrow()
-            );
+                            .orElseThrow(),
+                    shape);
         }
         return shape;
     }
