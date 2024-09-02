@@ -75,6 +75,8 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
     private ResourceLocation blockRegistryName;
     protected boolean hasSubstitute;
     protected List<String> onlyIfLoaded = new ArrayList<>();
+    protected int foliageTintIndex = 0;
+    protected int rootsTintIndex = 1;
 
     //used for null soil properties
     protected SoilProperties() {
@@ -185,6 +187,14 @@ public class SoilProperties extends RegistryEntry<SoilProperties> implements Res
 
     public void setHasSubstitute(boolean hasSubstitute) {
         this.hasSubstitute = hasSubstitute;
+    }
+
+    public void setFoliageTintIndex(int foliageTintIndex) {
+        this.foliageTintIndex = foliageTintIndex;
+    }
+
+    public void setRootsTintIndex(int rootsTintIndex) {
+        this.rootsTintIndex = rootsTintIndex;
     }
 
     ///////////////////////////////////////////

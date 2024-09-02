@@ -2,7 +2,6 @@ package com.ferreusveritas.dynamictrees.resources.loader;
 
 import com.ferreusveritas.dynamictrees.api.applier.ApplierRegistryEvent;
 import com.ferreusveritas.dynamictrees.api.resource.loading.preparation.JsonRegistryResourceLoader;
-import com.ferreusveritas.dynamictrees.block.leaves.LeavesProperties;
 import com.ferreusveritas.dynamictrees.block.rooty.RootyBlock;
 import com.ferreusveritas.dynamictrees.block.rooty.SoilHelper;
 import com.ferreusveritas.dynamictrees.block.rooty.SoilProperties;
@@ -10,7 +9,6 @@ import com.ferreusveritas.dynamictrees.block.rooty.SpreadableSoilProperties;
 import com.ferreusveritas.dynamictrees.deserialisation.JsonHelper;
 import com.ferreusveritas.dynamictrees.deserialisation.ResourceLocationDeserialiser;
 import com.ferreusveritas.dynamictrees.deserialisation.result.JsonResult;
-import com.ferreusveritas.dynamictrees.tree.species.Species;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
@@ -30,7 +28,8 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
 
     @Override
     public void registerAppliers() {
-        this.loadAppliers.register("substitute_soil", String.class, (soilProperties, substitute) ->
+        this.loadAppliers
+                .register("substitute_soil", String.class, (soilProperties, substitute) ->
                 soilProperties.setHasSubstitute(true)
         );
 
@@ -41,13 +40,17 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
                 .registerArrayApplier("only_if_loaded",String.class,SoilProperties::setOnlyIfLoaded)
                 .registerMapApplier("model_overrides", ResourceLocation.class, SoilProperties::setModelOverrides)
                 .registerMapApplier("texture_overrides", ResourceLocation.class, SoilProperties::setTextureOverrides);
-        ;
 
-        this.setupAppliers.register("primitive_soil", Block.class, SoilProperties::setPrimitiveSoilBlock);
+        this.setupAppliers
+                .register("primitive_soil", Block.class, SoilProperties::setPrimitiveSoilBlock);
 
+        this.reloadAppliers
+                .register("foliage_tint_index", Integer.class, SoilProperties::setFoliageTintIndex)
+                .register("roots_tint_index", Integer.class, SoilProperties::setRootsTintIndex);
         this.registerSpreadableAppliers();
 
-        this.commonAppliers.registerArrayApplier("acceptable_soils", String.class, this::registerAcceptableSoil);
+        this.commonAppliers
+                .registerArrayApplier("acceptable_soils", String.class, this::registerAcceptableSoil);
 
         super.registerAppliers();
     }
@@ -70,10 +73,6 @@ public final class SoilPropertiesResourceLoader extends JsonRegistryResourceLoad
                                 () -> properties.addSpreadableSoils(soil)
                         ));
     }
-
-//    private void registerAerialRootsAppliers(){
-//
-//    }
 
     @Override
     protected void applyLoadAppliers(LoadData loadData, JsonObject json) {

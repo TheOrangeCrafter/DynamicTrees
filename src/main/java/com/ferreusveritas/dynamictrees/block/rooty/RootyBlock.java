@@ -95,10 +95,10 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
     }
 
     public Block getPrimitiveSoilBlock() {
-        return properties.getPrimitiveSoilBlock();
+        return getSoilProperties().getPrimitiveSoilBlock();
     }
     public BlockState getPrimitiveSoilState(BlockState currentSoilState) {
-        return properties.getPrimitiveSoilState(currentSoilState);
+        return getSoilProperties().getPrimitiveSoilState(currentSoilState);
     }
 
     ///////////////////////////////////////////
@@ -474,11 +474,11 @@ public class RootyBlock extends BlockWithDynamicHardness implements TreePart, En
 
     public int colorMultiplier(BlockColors blockColors, BlockState state, @Nullable BlockAndTintGetter level, @Nullable BlockPos pos, int tintIndex) {
         final int white = 0xFFFFFFFF;
-        return switch (tintIndex) {
-            case 0 -> blockColors.getColor(getPrimitiveSoilState(state), level, pos, tintIndex);
-            case 1 -> state.getBlock() instanceof RootyBlock ? rootColor(state, level, pos) : white;
-            default -> white;
-        };
+        if (tintIndex == getSoilProperties().foliageTintIndex)
+            return blockColors.getColor(getPrimitiveSoilState(state), level, pos, tintIndex);
+        else if (tintIndex == getSoilProperties().rootsTintIndex)
+            return state.getBlock() instanceof RootyBlock ? rootColor(state, level, pos) : white;
+        return white;
     }
 
     public boolean getColorFromBark() {
