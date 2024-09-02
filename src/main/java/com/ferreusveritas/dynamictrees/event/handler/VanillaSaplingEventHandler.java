@@ -7,6 +7,7 @@ import com.ferreusveritas.dynamictrees.util.ItemUtils;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.SaplingGrowTreeEvent;
@@ -17,15 +18,19 @@ public class VanillaSaplingEventHandler {
 
     @SubscribeEvent
     public void onPlayerPlaceBlock(BlockEvent.EntityPlaceEvent event) {
-        final BlockState state = event.getPlacedBlock();
+        final Block block = event.getPlacedBlock().getBlock();
 
-        if (!(event.getLevel() instanceof Level) || !TreeRegistry.SAPLING_REPLACERS.containsKey(state)) {
+        if (!(event.getLevel() instanceof Level level) || !TreeRegistry.SAPLING_REPLACERS.containsKey(block)) {
             return;
         }
 
-        final Level level = (Level) event.getLevel();
+        //Ignore if the block has not actually changed
+        if (event.getBlockSnapshot().getReplacedBlock().getBlock() == event.getBlockSnapshot().getCurrentBlock().getBlock()){
+            return;
+        }
+
         final BlockPos pos = event.getPos();
-        final Species targetSpecies = TreeRegistry.SAPLING_REPLACERS.get(state);
+        final Species targetSpecies = TreeRegistry.SAPLING_REPLACERS.get(block);
 
         // If we should be overriding for this location, then correct the species to the override.
         final Species species = targetSpecies.selfOrLocationOverride(level, pos);
@@ -41,14 +46,13 @@ public class VanillaSaplingEventHandler {
     public void onSaplingGrowTree(SaplingGrowTreeEvent event) {
         final LevelAccessor levelAccess = event.getLevel();
         final BlockPos pos = event.getPos();
-        final BlockState blockState = levelAccess.getBlockState(pos);
+        final Block block = levelAccess.getBlockState(pos).getBlock();
 
-        if (!(levelAccess instanceof Level) || !TreeRegistry.SAPLING_REPLACERS.containsKey(blockState)) {
+        if (!(levelAccess instanceof Level level) || !TreeRegistry.SAPLING_REPLACERS.containsKey(block)) {
             return;
         }
 
-        final Level level = ((Level) levelAccess);
-        final Species species = TreeRegistry.SAPLING_REPLACERS.get(blockState)
+        final Species species = TreeRegistry.SAPLING_REPLACERS.get(block)
                 .selfOrLocationOverride(level, pos);
 
         level.removeBlock(pos, false); // Remove the block so the plantTree function won't automatically fail.

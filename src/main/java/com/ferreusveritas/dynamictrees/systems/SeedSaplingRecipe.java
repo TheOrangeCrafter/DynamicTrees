@@ -3,7 +3,6 @@ package com.ferreusveritas.dynamictrees.systems;
 import com.ferreusveritas.dynamictrees.util.Optionals;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.core.Registry;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
@@ -36,6 +35,7 @@ public class SeedSaplingRecipe {
     private Item saplingItem;
     private boolean canCraftSaplingToSeed = true;
     private boolean canCraftSeedToSapling = true;
+    private boolean replaceSaplingWhenPlaced = true;
 
     public SeedSaplingRecipe(@Nullable Block saplingBlock, Item saplingItem) {
         this(saplingItem);
@@ -60,6 +60,10 @@ public class SeedSaplingRecipe {
 
     public void setCanCraftSeedToSapling(boolean canCraftSeedToSapling) {
         this.canCraftSeedToSapling = canCraftSeedToSapling;
+    }
+
+    public void setReplaceSaplingWhenPlaced(boolean replaceSaplingWhenPlaced) {
+        this.replaceSaplingWhenPlaced = replaceSaplingWhenPlaced;
     }
 
     public Optional<Item> getSaplingItem() {
@@ -98,4 +102,7 @@ public class SeedSaplingRecipe {
         return canCraftSeedToSapling;
     }
 
+    public boolean shouldReplaceSaplingWhenPlaced() {
+        return replaceSaplingWhenPlaced;
+    }
 }

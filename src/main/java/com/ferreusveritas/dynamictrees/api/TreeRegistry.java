@@ -9,6 +9,7 @@ import com.ferreusveritas.dynamictrees.item.DendroPotion;
 import com.ferreusveritas.dynamictrees.item.Seed;
 import com.ferreusveritas.dynamictrees.tree.species.Species;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
@@ -110,10 +111,10 @@ public final class TreeRegistry {
     // SAPLING HANDLING
     //////////////////////////////
 
-    public final static Map<BlockState, Species> SAPLING_REPLACERS = new HashMap<>();
+    public final static Map<Block, Species> SAPLING_REPLACERS = new HashMap<>();
 
     public static void registerSaplingReplacer(BlockState state, Species species) {
-        SAPLING_REPLACERS.put(state, species);
+        SAPLING_REPLACERS.put(state.getBlock(), species);
     }
 
     //////////////////////////////

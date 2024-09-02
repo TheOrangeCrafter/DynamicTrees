@@ -16,7 +16,16 @@
     },
     "growth_logic_kit": "azalea",
     "perfect_biomes": { "name": "minecraft:lush_caves" },
-    "primitive_saplings": ["azalea", "flowering_azalea"],
+    "primitive_saplings": [
+        {
+            "sapling_block": "azalea",
+            "replace_sapling_when_placed": false
+        },
+        {
+            "sapling_block": "flowering_azalea",
+            "replace_sapling_when_placed": false
+        }
+    ],
     "force_soil": "rooted_dirt",
     "acceptable_soils": ["dirt_like"],
     "world_gen_acceptable_soils": ["sand_like", "snow_like", "terracotta_like"],

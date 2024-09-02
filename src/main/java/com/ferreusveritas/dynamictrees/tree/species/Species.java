@@ -579,7 +579,7 @@ public class Species extends RegistryEntry<Species> implements Resettable<Specie
     public boolean shouldOverrideCommon(final BlockGetter level, final BlockPos trunkPos) {
         //Common Override test will fail if the server has not loaded yet
         if (ServerLifecycleHooks.getCurrentServer() == null) {
-            LogManager.getLogger().warn("shouldOverrideCommon was called before the server was loaded. This should not happen.");
+            LogManager.getLogger().warn("shouldOverrideCommon was called before the server was loaded, will return false for now.");
             return false;
         }
         return this.hasCommonOverride() && this.commonOverride.test(level, trunkPos);
@@ -912,8 +912,9 @@ public class Species extends RegistryEntry<Species> implements Resettable<Specie
     protected final Set<SeedSaplingRecipe> primitiveSaplingRecipe = new HashSet<>();
 
     public void addPrimitiveSaplingRecipe(SeedSaplingRecipe recipe) {
-        recipe.getSaplingBlock()
-                .ifPresent(block -> TreeRegistry.registerSaplingReplacer(block.defaultBlockState(), this));
+        if (recipe.shouldReplaceSaplingWhenPlaced()){
+            recipe.getSaplingBlock().ifPresent(block -> TreeRegistry.registerSaplingReplacer(block.defaultBlockState(), this));
+        }
         primitiveSaplingRecipe.add(recipe);
     }
 
@@ -2433,7 +2434,7 @@ public class Species extends RegistryEntry<Species> implements Resettable<Specie
                 Pair.of("megaSpecies", this.megaSpecies), Pair.of("seed", this.seed),
                 Pair.of("primitive_sapling", TreeRegistry.SAPLING_REPLACERS.entrySet().stream()
                         .filter(entry -> entry.getValue() == this).map(Map.Entry::getKey).findAny()
-                        .orElse(BlockStates.AIR)),
+                        .orElse(Blocks.AIR)),
                 Pair.of("perfectBiomes", this.perfectBiomes),
                 Pair.of("acceptableBlocksForGrowth", this.acceptableBlocksForGrowth),
                 Pair.of("genFeatures", this.genFeatures));
