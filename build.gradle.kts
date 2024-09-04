@@ -99,6 +99,9 @@ dependencies {
     runtimeOnly(fg.deobf("cc.tweaked:cc-tweaked-$mcVersion-core:${property("ccVersion")}"))
     runtimeOnly(fg.deobf("cc.tweaked:cc-tweaked-$mcVersion-forge:${property("ccVersion")}"))
 
+    //Spark profiler
+    runtimeOnly(fg.deobf("curse.maven:spark-361579:4738952"))
+
     // runtimeOnly(fg.deobf("com.harleyoconnor.suggestionproviderfix:SuggestionProviderFix-1.19:${property("suggestionProviderFixVersion")}"))
 }
 

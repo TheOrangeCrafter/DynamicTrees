@@ -18,8 +18,12 @@ import com.ferreusveritas.dynamictrees.tree.species.Species;
 import com.ferreusveritas.dynamictrees.util.LevelContext;
 import com.ferreusveritas.dynamictrees.util.RayTraceCollision;
 import com.ferreusveritas.dynamictrees.util.SafeChunkBounds;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.network.chat.ChatType;
+import net.minecraft.network.chat.OutgoingChatMessage;
+import net.minecraft.network.chat.PlayerChatMessage;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
@@ -55,6 +59,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 @SuppressWarnings("deprecation")
@@ -73,18 +78,13 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         this.registerDefaultState(this.stateDefinition.any().setValue(DISTANCE, LeavesProperties.maxHydro).setValue(PERSISTENT, false).setValue(WATERLOGGED, false));
     }
 
+    ///////////////////////////////////////////
+    // PROPERTIES
+    ///////////////////////////////////////////
+
     @Override
     public boolean isRandomlyTicking(BlockState state) {
         return !state.getValue(PERSISTENT);
-    }
-
-    @Override
-    public void animateTick(BlockState state, Level level, BlockPos pos, RandomSource random) {
-        if (properties.hasTickParticles && properties.getPrimitiveLeavesBlock().isPresent()) {
-            properties.getPrimitiveLeavesBlock().ifPresent((b)->b.animateTick(state,level,pos,random));
-        } else {
-            super.animateTick(state, level, pos, random);
-        }
     }
 
     public void setProperties(LeavesProperties properties) {
@@ -117,13 +117,29 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         return this.getFlammability(state, level, pos, face) > 0 || face == Direction.UP;
     }
 
-    @Nonnull
-    public BlockState updateShape(@Nonnull BlockState stateIn, Direction facing, BlockState facingState, @Nonnull LevelAccessor level, @Nonnull BlockPos currentPos, BlockPos facingPos) {
-        return stateIn;
-    }
-
+    @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         return this.defaultBlockState();
+    }
+
+    @Override
+    public float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
+        return getProperties(state).getPrimitiveLeaves().getDestroyProgress(player, level, pos);
+    }
+
+    @Override
+    public ItemStack getCloneItemStack(BlockState state, HitResult target, BlockGetter level, BlockPos pos, Player player) {
+        return getProperties(state).getPrimitiveLeavesItemStack();
+    }
+
+    ///////////////////////////////////////////
+    // GROWTH
+    ///////////////////////////////////////////
+
+    @Override
+    public int age(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, SafeChunkBounds safeBounds) {
+        updateLeaves(level, pos, state, rand,safeBounds == SafeChunkBounds.ANY_WG,null);
+        return state.getValue(DISTANCE);
     }
 
     @Override
@@ -135,88 +151,107 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         double attempts = DTConfigs.TREE_GROWTH_FOLDING.get() * DTConfigs.TREE_GROWTH_MULTIPLIER.get();
 
         if (attempts >= 1.0f || rand.nextFloat() < attempts) {
-            doTick(level, pos, state, rand);
-        }
-
-        int start = rand.nextInt(26);
-
-        while (--attempts > 0) {
-            if (attempts >= 1.0f || rand.nextFloat() < attempts) {
-                int r = (start++ % 26) + 14; // 14 - 39
-                r = r > 26 ? r - 13 : r - 14; // 0 - 26 but Skip 13
-                final BlockPos dPos = pos.offset((r % 3) - 1, ((r / 3) % 3) - 1, ((r / 9) % 3) - 1);// (-1, -1, -1) to (1, 1, 1) skipping (0, 0, 0)
-                final BlockState dState = level.getBlockState(dPos);
-
-                if (dState.getBlock() instanceof DynamicLeavesBlock) {
-                    ((DynamicLeavesBlock) dState.getBlock()).doTick(level, dPos, dState, rand);
+            if (getProperties(state).updateTick(level, pos, state, rand)) {
+                if (!hasAdequateLight(state, level, getProperties(state), pos)) {
+                    level.removeBlock(pos, false); // No water, no light ... no leaves.
+                    return;
                 }
             }
         }
-    }
-
-    @Override
-    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource rand) {
-    }
-
-    protected void doTick(Level level, BlockPos pos, BlockState state, RandomSource rand) {
-        if (canTickAt(level, pos) && getProperties(state).updateTick(level, pos, state, rand)) {
+        //Every once in a blue moon, age the leaves
+        if (rand.nextFloat() < 0.05){
             age(level, pos, state, rand, SafeChunkBounds.ANY);
         }
     }
 
-    protected boolean canTickAt(Level level, BlockPos pos) {
-        // Check 2 blocks away for loaded chunks
-        int xm = pos.getX() - ((pos.getX() >> 4) << 4);
-        int zm = pos.getZ() - ((pos.getZ() >> 4) << 4);
-        if (xm > 1 && xm < 14 && zm > 1 && zm < 14) {
-            return level.isLoaded(pos);
+    @Nonnull
+    public BlockState updateShape(@Nonnull BlockState stateIn, Direction facing, BlockState facingState, @Nonnull LevelAccessor level, @Nonnull BlockPos currentPos, BlockPos facingPos) {
+        boolean sideIsLeaves = TreeHelper.isLeaves(facingState);
+        int sideHydro = sideIsLeaves ? facingState.getValue(DISTANCE) : 0;
+        if (!sideIsLeaves || sideHydro < stateIn.getValue(DISTANCE)){
+            level.scheduleTick(currentPos, this, 1);
         }
-        return level.isAreaLoaded(pos, 2);
-    }
 
-    public boolean appearanceChangesWithHydro(int oldHydro, int newHydro) {
-        return false;
+        return stateIn;
     }
-
     @Override
-    public int age(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, SafeChunkBounds safeBounds) {
+    public void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource rand) {
+        updateHydro(level, pos, state, false);
+    }
+
+    public int updateLeaves(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, boolean worldGen, @Nullable HashSet<BlockPos> visitedPositions){
+        boolean recursive = visitedPositions != null;
+        if (recursive){
+            if (visitedPositions.contains(pos)) return 0;
+            visitedPositions.add(pos);
+        }
         final LeavesProperties leavesProperties = getProperties(state);
-        final int oldHydro = state.getValue(DynamicLeavesBlock.DISTANCE);
-
-        final boolean worldGen = safeBounds != SafeChunkBounds.ANY;
-
-        if (!getProperties(state).shouldAge(worldGen, state)) {
-            return oldHydro;
-        }
-
-        // Check hydration level.  Dry leaves are dead leaves.
-        final int newHydro = getHydrationLevelFromNeighbors(level, pos, leavesProperties);
-
-        if (newHydro == 0 || (!worldGen && !hasAdequateLight(state, level, leavesProperties, pos))) { // Light doesn't work right during worldgen so we'll just disable it during worldgen for now.
-            level.removeBlock(pos, false); // No water, no light .. no leaves.
-            return -1; // Leaves were destroyed.
-        } else {
-            if (oldHydro != newHydro) { // Only update if the hydro has changed. A little performance gain.
-                // We do not use the 0x02 flag(update client) for performance reasons.  The clients do not need to know the hydration level of the leaves blocks as it
-                // does not affect appearance or behavior, unless appearanceChangesWithHydro.  For the same reason we use the 0x04 flag to prevent the block from being re-rendered.
-                level.setBlock(pos, getLeavesBlockStateForPlacement(level, pos, leavesProperties.getDynamicLeavesState(newHydro), oldHydro, worldGen), appearanceChangesWithHydro(oldHydro, newHydro) ? 2 : 4);
-            }
-        }
-
+        int newHydro = updateHydro(level, pos, state, worldGen);
+        //Grows new leaves around
         // We should do this even if the hydro is only 1.  Since there could be adjacent branch blocks that could use a leaves block
         for (Direction dir : Direction.values()) { // Go on all 6 sides of this block
             if (newHydro > 1 || rand.nextInt(4) == 0) { // we'll give it a 1 in 4 chance to grow leaves if hydro is low to help performance
                 BlockPos offpos = pos.relative(dir);
-                if (safeBounds.inBounds(offpos, true) && isLocationSuitableForNewLeaves(level, leavesProperties, offpos)) { // Attempt to grow new leaves
-                    int hydro = getHydrationLevelFromNeighbors(level, offpos, leavesProperties);
-                    if (hydro > 0) {
-                        level.setBlock(offpos, getLeavesBlockStateForPlacement(level, offpos, leavesProperties.getDynamicLeavesState(hydro), 0, worldGen), 2); // Removed Notify Neighbors Flag for performance
+                if (recursive && visitedPositions.contains(offpos)) continue;
+                //attempt to grow new leaves, a null hydro will be calculated from neighbors.
+                growLeavesIfLocationIsSuitable(level, leavesProperties, offpos, null);
+                if (recursive){
+                    //We recursively visit nearby leaves telling them to update too
+                    BlockState sideState = level.getBlockState(offpos);
+                    if (TreeHelper.isLeaves(sideState)){
+                        updateLeaves(level, offpos, sideState, rand, worldGen, visitedPositions);
                     }
                 }
+
             }
         }
+        return newHydro;
+    }
 
-        return newHydro; // Leaves were not destroyed
+    //TICK -> Destroy leaves if invalid
+
+    //NEIGHBOR UPDATE -> recalculate hydro
+
+    //TREE PULSE -> recalculate hydro
+    //              grows new leaves around (recursive)
+
+    protected boolean canCheckSurroundings(LevelAccessor accessor, BlockPos pos) {
+        if (accessor instanceof Level level){
+            // Check 2 blocks away for loaded chunks
+            int xm = pos.getX() - ((pos.getX() >> 4) << 4);
+            int zm = pos.getZ() - ((pos.getZ() >> 4) << 4);
+            if (xm > 1 && xm < 14 && zm > 1 && zm < 14) {
+                return level.isLoaded(pos);
+            }
+        }
+        return accessor.isAreaLoaded(pos, 2);
+    }
+
+    public int updateHydro(LevelAccessor level, BlockPos pos, BlockState state, boolean worldGen){
+        final LeavesProperties leavesProperties = getProperties(state);
+        final int oldHydro = state.getValue(DISTANCE);
+
+        if (!canCheckSurroundings(level, pos)) return oldHydro;
+
+        // Check hydration level.  Dry leaves are dead leaves.
+        final int newHydro = getHydrationLevelFromNeighbors(level, pos, leavesProperties);
+
+        if (oldHydro != newHydro) { // Only update if the hydro has changed. A little performance gain.
+            BlockState placeState = getLeavesBlockStateForPlacement(level, pos, leavesProperties.getDynamicLeavesState(newHydro), oldHydro, worldGen);
+            // We do not use the 0x02 flag(update client) for performance reasons. The clients do not need to know the hydration level of the leaves blocks as it
+            // does not affect appearance or behavior, unless appearanceChangesWithHydro. For the same reason we use the 0x04 flag to prevent the block from being re-rendered.
+            // however if the new hydro is 0, it means the leaves were removed and we do need to update.
+            int flag = newHydro == 0 ? 3 : appearanceChangesWithHydro(oldHydro, newHydro) ? 2 : 4;
+            level.setBlock(pos, placeState, flag);
+        }
+        return newHydro;
+    }
+
+    /**
+     * Whether the leaves have different looks
+     */
+    public boolean appearanceChangesWithHydro(int oldHydro, int newHydro) {
+        return false;
     }
 
     /**
@@ -233,15 +268,235 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         return leavesStateWithHydro; //by default just pass the blockstate along
     }
 
-    @Override
-    public float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
-        return getProperties(state).getPrimitiveLeaves().getDestroyProgress(player, level, pos);
+    /**
+     * Checks to see if the location at pos is suitable for new leaves and if so set new leaves at pos with hydro value
+     *
+     * @param level      The level
+     * @param leavesProp Properties of the leaves we are working with
+     * @param pos        The position of interest
+     * @param hydro      The hydration value for the resulting cell
+     * @return {@code true} if the location was suitable (and so leaves were placed); {@code false} otherwise.
+     */
+    public boolean growLeavesIfLocationIsSuitable(LevelAccessor level, LeavesProperties leavesProp, BlockPos pos, @Nullable Integer hydro) {
+        if (isLocationSuitableForNewLeaves(level, leavesProp, pos)) {
+            if (hydro == null) hydro = getHydrationLevelFromNeighbors(level, pos, leavesProp);
+            else hydro = hydro == 0 ? leavesProp.getCellKit().getDefaultHydration() : hydro;
+            level.setBlock(pos, getLeavesBlockStateForPlacement(level, pos, leavesProp.getDynamicLeavesState(hydro), 0, false), 2); // Removed Notify Neighbors Flag for performance.
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Checks the {@link Block} at the given {@link BlockPos} is suitable for growing new leaves.
+     *
+     * @param level            The {@link Level} instance.
+     * @param leavesProperties The {@link LeavesProperties} instance.
+     * @param pos              The {@link BlockPos} for the new leaves.
+     * @return {@code true} if the {@link BlockPos} is suitable for new leaves; {@code false} otherwise.
+     */
+    public boolean isLocationSuitableForNewLeaves(LevelAccessor level, LeavesProperties leavesProperties, BlockPos pos) {
+        final BlockState blockState = level.getBlockState(pos);
+        final Block block = blockState.getBlock();
+
+        if (block instanceof DynamicLeavesBlock) {
+            return false;
+        }
+
+        final BlockState belowBlockState = level.getBlockState(pos.below());
+
+        // Prevent leaves from growing on the ground or above liquids.
+        if (!leavesProperties.canGrowOnGround() && ((belowBlockState.canOcclude() && !TreeHelper.isBranch(belowBlockState) && !(belowBlockState.getBlock() instanceof LeavesBlock)) || belowBlockState.getBlock() instanceof LiquidBlock)) {
+            return false;
+        }
+
+        // Help to grow into double tall grass and ferns in a more natural way.
+        final BlockState stateDown = level.getBlockState(pos.below());
+        if (block instanceof DoublePlantBlock && blockState.getValue(DoublePlantBlock.HALF) == DoubleBlockHalf.UPPER &&
+                stateDown.getBlock() instanceof DoublePlantBlock && stateDown.getValue(DoublePlantBlock.HALF) == DoubleBlockHalf.LOWER) {
+            if (block == Blocks.TALL_GRASS) {
+                level.setBlock(pos.below(), Blocks.GRASS.defaultBlockState(), 3);
+            } else if (block == Blocks.LARGE_FERN) {
+                level.setBlock(pos.below(), Blocks.FERN.defaultBlockState(), 3);
+            }
+            level.removeBlock(pos, false);
+        }
+
+        return (level.isEmptyBlock(pos) || level.getBlockState(pos).canBeReplaced()) && hasAdequateLight(blockState, level, leavesProperties, pos);
+    }
+
+    /**
+     * Checks that the {@link DynamicLeavesBlock} at the given {@link BlockPos} has enough light to exist.
+     *
+     * @param state            The {@link BlockState} of the {@link DynamicLeavesBlock} to check.
+     * @param level            The {@link LevelAccessor} instance.
+     * @param leavesProperties The {@link LeavesProperties} instance.
+     * @param pos              The {@link BlockPos} of the {@link DynamicLeavesBlock}.
+     * @return {@code true} if the {@link Block} has adequate light; {@code false otherwise}.
+     */
+    public boolean hasAdequateLight(BlockState state, LevelAccessor level, LeavesProperties leavesProperties, BlockPos pos) {
+
+        // If clear sky is above the block then we needn't go any further.
+        if (level.canSeeSkyFromBelowWater(pos)) {
+            return true;
+        }
+
+        final int smother = leavesProperties.getSmotherLeavesMax();
+
+        // Check to make sure there isn't too many leaves above this block.  Encourages forest canopy development.
+        if (smother != 0) {
+            if (isBottom(level, pos)) { // Only act on the bottom block of the Growable stack
+                // Prevent leaves from growing where they would be "smothered" from too much above foliage
+
+                int smotherLeaves = 0;
+
+                for (int i = 0; i < smother; i++) {
+                    smotherLeaves += TreeHelper.isTreePart(level, pos.above(i + 1)) ? 1 : 0;
+                }
+
+                if (smotherLeaves >= smother) {
+                    return false;
+                }
+            }
+        }
+		
+		/* Ensure the leaves don't grow in dark locations. This creates a realistic canopy effect in forests and other nice stuff.
+		    If there's already leaves here then don't kill them if it's a little dark.
+		    If it's empty space then don't create leaves unless it's sufficiently bright.
+		    The range allows for adaptation to the hysteric effect that could cause blocks to rapidly appear and disappear. */
+        return level.getBrightness(LightLayer.SKY, pos) >= (TreeHelper.isLeaves(state) ? leavesProperties.getLightRequirement() - 2 : leavesProperties.getLightRequirement());
+    }
+
+    /**
+     * Checks if the {@link DynamicLeavesBlock} at the given {@link BlockPos} is at the bottom of the stack.
+     *
+     * @param level The {@link Level} instance.
+     * @param pos   The {@link BlockPos} for the leaves {@link Block} to check.
+     * @return {@code true} if the {@link Block} is at the bottom of the stack; {@code false} otherwise.
+     */
+    public static boolean isBottom(LevelAccessor level, BlockPos pos) {
+        final BlockState belowBlockState = level.getBlockState(pos.below());
+        final TreePart belowTreepart = TreeHelper.getTreePart(belowBlockState);
+
+        if (belowTreepart != TreeHelper.NULL_TREE_PART) {
+            return belowTreepart.getRadius(belowBlockState) > 1; // False for leaves, twigs, and dirt. True for stocky branches.
+        }
+
+        return true; // Non-Tree parts below indicate the bottom of stack.
+    }
+
+    /**
+     * Gathers hydration levels from neighbors before pushing the values into the solver.
+     *
+     * @param level            The {@link LevelAccessor} instance.
+     * @param pos              The {@link BlockPos} to get neighbors for.
+     * @param leavesProperties The {@link LeavesProperties} instance.
+     * @return The hydration from the solved cells.
+     */
+    public int getHydrationLevelFromNeighbors(LevelAccessor level, BlockPos pos, LeavesProperties leavesProperties) {
+        final Cell[] cells = new Cell[6];
+
+        for (Direction dir : Direction.values()) {
+            final BlockPos deltaPos = pos.relative(dir);
+            final BlockState state = level.getBlockState(deltaPos);
+            final TreePart part = TreeHelper.getTreePart(state);
+
+            cells[dir.ordinal()] = part.getHydrationCell(level, deltaPos, state, dir, leavesProperties);
+        }
+
+        return leavesProperties.getCellKit().getCellSolver().solve(cells); // Find center cell's value from neighbors.
     }
 
     @Override
-    public ItemStack getCloneItemStack(BlockState state, HitResult target, BlockGetter level, BlockPos pos, Player player) {
-        return getProperties(state).getPrimitiveLeavesItemStack();
+    public Cell getHydrationCell(BlockGetter level, BlockPos pos, BlockState state, Direction dir, LeavesProperties otherProperties) {
+        LeavesProperties thisProperties = getProperties(state);
+        return thisProperties.isCompatibleLeaves(otherProperties) ? thisProperties.getCellKit().getCellForLeaves(state.getValue(LeavesBlock.DISTANCE)) : CellNull.NULL_CELL;
     }
+
+    @Override
+    public GrowSignal growSignal(Level level, BlockPos pos, GrowSignal signal) {
+        if (signal.step()) // This is always placed at the beginning of every growSignal function.
+        {
+            this.branchOut(level, pos, signal); // When a growth signal hits a leaf block it attempts to become a tree branch.}
+        }
+        return signal;
+    }
+
+    /**
+     * Will place a leaves block if the position is air and it's possible to create one there. Otherwise it will check
+     * to see if the block is already there.
+     *
+     * @param level            The {@link Level} instance.
+     * @param pos              The {@link BlockPos} to check.
+     * @param leavesProperties The {@link LeavesProperties} required.
+     * @return {@code true} if the leaves are at the given {@link BlockPos}; {@code false} otherwise.
+     */
+    public boolean needLeaves(Level level, BlockPos pos, LeavesProperties leavesProperties, Species species, Boolean pulseLeavesIfFound) {
+        if (level.isEmptyBlock(pos)) { // Place leaves if air.
+            return this.growLeavesIfLocationIsSuitable(level, leavesProperties, pos, leavesProperties.getCellKit().getDefaultHydration());
+        } else { // Otherwise check if there's already this type of leaves there.
+            BlockState state = level.getBlockState(pos);
+            final TreePart treePart = TreeHelper.getTreePart(state);
+            return treePart instanceof DynamicLeavesBlock && species.isValidLeafBlock((DynamicLeavesBlock) treePart);
+        }
+    }
+
+    public GrowSignal branchOut(Level level, BlockPos pos, GrowSignal signal) {
+
+        Species species = signal.getSpecies();
+        LeavesProperties leavesProperties = species.getLeavesProperties();
+
+        //Check to be sure the placement for a branch is valid by testing to see if it would first support a leaves block
+        if (!needLeaves(level, pos, leavesProperties, species, true)) {
+            signal.success = false;
+            return signal;
+        }
+
+        //Check to see if there's neighboring branches and abort if there's any found.
+        if (BranchBlock.isNextToBranch(level, pos, signal.dir.getOpposite())) {
+            signal.success = false;
+            return signal;
+        }
+
+        boolean hasLeaves = false;
+        //Check leaves conditions before expanding the canopy, otherwise it will always be true
+        for (Direction dir : Direction.values()) {
+            if (needLeaves(level, pos.relative(dir), leavesProperties, species, false)) {
+                hasLeaves = true;
+                break;
+            }
+        }
+
+        //Pulse through the leaves to update the canopy shape and their hydro values
+        int hydro = updateLeaves(level, pos, level.getBlockState(pos), signal.rand, false, new HashSet<>());
+        //if hydro was 0 then the leaves have been removed
+        if (hydro == 0){
+            signal.success = false;
+            return signal;
+        }
+
+        if (hasLeaves) {
+            //Finally set the leaves block to a branch
+            Family family = species.getFamily();
+            family.getBranchForPlacement(level, species, pos).ifPresent(branch ->
+                    branch.setRadius(level, pos, family.getPrimaryThickness(), null)
+            );
+            signal.radius = family.getSecondaryThickness();//For the benefit of the parent branch
+        }
+
+        signal.success = hasLeaves;
+
+        return signal;
+    }
+
+    @Override
+    public int probabilityForBlock(BlockState state, BlockGetter level, BlockPos pos, BranchBlock from) {
+        return from.getFamily().isCompatibleDynamicLeaves(from.getFamily().getCommonSpecies(), state, level, pos) ? 2 : 0;
+    }
+
+    ///////////////////////////////////////////
+    // ENTITY INTERACTIONS
+    ///////////////////////////////////////////
 
     /**
      * We will disable landing effects because we crush the blocks on landing and create our own particles in
@@ -330,7 +585,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         final float volume = Mth.clamp(stepSound.getVolume() / 16.0f * fallDistance, 0, 3.0f);
         level.playLocalSound(entity.getX(), entity.getY(), entity.getZ(), stepSound.getBreakSound(), SoundSource.BLOCKS, volume, stepSound.getPitch(), false);
 
-        for (int iy = 0; (entity.fallDistance > 3.0f) && crushing && ((pos.getY() - iy) > 0); iy++) {
+        for (int iy = 0; (entity.fallDistance > 3.0f) && crushing && ((pos.getY() - iy) >= level.getMinBuildHeight()); iy++) {
             if (hasLeaves) { // This layer has leaves that can help break our fall
                 entity.fallDistance *= 0.66f; // For each layer we are crushing break the momentum
                 hasLeaves = false;
@@ -367,225 +622,6 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
             entity.setSprinting(false); // One cannot sprint upon tree tops
             entity.setDeltaMovement(entity.getDeltaMovement().x * 0.25D, entity.getDeltaMovement().y, entity.getDeltaMovement().z * 0.25D); // Make travel slow and laborious
         }
-    }
-
-    /**
-     * Checks to see if the location at pos is suitable for new leaves and if so set new leaves at pos with hydro value
-     *
-     * @param level      The level
-     * @param leavesProp Properties of the leaves we are working with
-     * @param pos        The position of interest
-     * @param hydro      The hydration value for the resulting cell
-     * @return {@code true} if the location was suitable (and so leaves were placed); {@code false} otherwise.
-     */
-    public boolean growLeavesIfLocationIsSuitable(LevelAccessor level, LeavesProperties leavesProp, BlockPos pos, int hydro) {
-        hydro = hydro == 0 ? leavesProp.getCellKit().getDefaultHydration() : hydro;
-        if (isLocationSuitableForNewLeaves(level, leavesProp, pos)) {
-            level.setBlock(pos, getLeavesBlockStateForPlacement(level, pos, leavesProp.getDynamicLeavesState(hydro), 0, false), 2); // Removed Notify Neighbors Flag for performance.
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Checks the {@link Block} at the given {@link BlockPos} is suitable for growing new leaves.
-     *
-     * @param level            The {@link Level} instance.
-     * @param leavesProperties The {@link LeavesProperties} instance.
-     * @param pos              The {@link BlockPos} for the new leaves.
-     * @return {@code true} if the {@link BlockPos} is suitable for new leaves; {@code false} otherwise.
-     */
-    public boolean isLocationSuitableForNewLeaves(LevelAccessor level, LeavesProperties leavesProperties, BlockPos pos) {
-        final BlockState blockState = level.getBlockState(pos);
-        final Block block = blockState.getBlock();
-
-        if (block instanceof DynamicLeavesBlock) {
-            return false;
-        }
-
-        final BlockState belowBlockState = level.getBlockState(pos.below());
-
-        // Prevent leaves from growing on the ground or above liquids.
-        if (!leavesProperties.canGrowOnGround() && ((belowBlockState.canOcclude() && !TreeHelper.isBranch(belowBlockState) && !(belowBlockState.getBlock() instanceof LeavesBlock)) || belowBlockState.getBlock() instanceof LiquidBlock)) {
-            return false;
-        }
-
-        // Help to grow into double tall grass and ferns in a more natural way.
-        final BlockState stateDown = level.getBlockState(pos.below());
-        if (block instanceof DoublePlantBlock && blockState.getValue(DoublePlantBlock.HALF) == DoubleBlockHalf.UPPER &&
-                stateDown.getBlock() instanceof DoublePlantBlock && stateDown.getValue(DoublePlantBlock.HALF) == DoubleBlockHalf.LOWER) {
-            if (block == Blocks.TALL_GRASS) {
-                level.setBlock(pos.below(), Blocks.GRASS.defaultBlockState(), 3);
-            } else if (block == Blocks.LARGE_FERN) {
-                level.setBlock(pos.below(), Blocks.FERN.defaultBlockState(), 3);
-            }
-            level.removeBlock(pos, false);
-        }
-
-        return (level.isEmptyBlock(pos) || level.getBlockState(pos).canBeReplaced()) && hasAdequateLight(blockState, level, leavesProperties, pos);
-    }
-
-    /**
-     * Checks that the {@link DynamicLeavesBlock} at the given {@link BlockPos} has enough light to exist.
-     *
-     * @param state            The {@link BlockState} of the {@link DynamicLeavesBlock} to check.
-     * @param level            The {@link LevelAccessor} instance.
-     * @param leavesProperties The {@link LeavesProperties} instance.
-     * @param pos              The {@link BlockPos} of the {@link DynamicLeavesBlock}.
-     * @return {@code true} if the {@link Block} has adequate light; {@code false otherwise}.
-     */
-    public boolean hasAdequateLight(BlockState state, LevelAccessor level, LeavesProperties leavesProperties, BlockPos pos) {
-
-        // If clear sky is above the block then we needn't go any further.
-        if (level.canSeeSkyFromBelowWater(pos)) {
-            return true;
-        }
-
-        final int smother = leavesProperties.getSmotherLeavesMax();
-
-        // Check to make sure there isn't too many leaves above this block.  Encourages forest canopy development.
-        if (smother != 0) {
-            if (isBottom(level, pos)) { // Only act on the bottom block of the Growable stack
-                // Prevent leaves from growing where they would be "smothered" from too much above foliage
-
-                int smotherLeaves = 0;
-
-                for (int i = 0; i < smother; i++) {
-                    smotherLeaves += TreeHelper.isTreePart(level, pos.above(i + 1)) ? 1 : 0;
-                }
-
-                if (smotherLeaves >= smother) {
-                    return false;
-                }
-            }
-        }
-		
-		/* Ensure the leaves don't grow in dark locations. This creates a realistic canopy effect in forests and other nice stuff.
-		    If there's already leaves here then don't kill them if it's a little dark.
-		    If it's empty space then don't create leaves unless it's sufficiently bright.
-		    The range allows for adaptation to the hysteric effect that could cause blocks to rapidly appear and disappear. */
-
-        return level.getBrightness(LightLayer.SKY, pos) >= (TreeHelper.isLeaves(state) ? leavesProperties.getLightRequirement() - 2 : leavesProperties.getLightRequirement());
-    }
-
-    /**
-     * Checks if the {@link DynamicLeavesBlock} at the given {@link BlockPos} is at the bottom of the stack.
-     *
-     * @param level The {@link Level} instance.
-     * @param pos   The {@link BlockPos} for the leaves {@link Block} to check.
-     * @return {@code true} if the {@link Block} is at the bottom of the stack; {@code false} otherwise.
-     */
-    public static boolean isBottom(LevelAccessor level, BlockPos pos) {
-        final BlockState belowBlockState = level.getBlockState(pos.below());
-        final TreePart belowTreepart = TreeHelper.getTreePart(belowBlockState);
-
-        if (belowTreepart != TreeHelper.NULL_TREE_PART) {
-            return belowTreepart.getRadius(belowBlockState) > 1; // False for leaves, twigs, and dirt. True for stocky branches.
-        }
-
-        return true; // Non-Tree parts below indicate the bottom of stack.
-    }
-
-    /**
-     * Gathers hydration levels from neighbors before pushing the values into the solver.
-     *
-     * @param level            The {@link LevelAccessor} instance.
-     * @param pos              The {@link BlockPos} to get neighbors for.
-     * @param leavesProperties The {@link LeavesProperties} instance.
-     * @return The hydration from the solved cells.
-     */
-    public int getHydrationLevelFromNeighbors(LevelAccessor level, BlockPos pos, LeavesProperties leavesProperties) {
-        final Cell[] cells = new Cell[6];
-
-        for (Direction dir : Direction.values()) {
-            final BlockPos deltaPos = pos.relative(dir);
-            final BlockState state = level.getBlockState(deltaPos);
-            final TreePart part = TreeHelper.getTreePart(state);
-
-            cells[dir.ordinal()] = part.getHydrationCell(level, deltaPos, state, dir, leavesProperties);
-        }
-
-        return leavesProperties.getCellKit().getCellSolver().solve(cells); // Find center cell's value from neighbors.
-    }
-
-    @Override
-    public Cell getHydrationCell(BlockGetter level, BlockPos pos, BlockState state, Direction dir, LeavesProperties otherProperties) {
-        LeavesProperties thisProperties = getProperties(state);
-        return thisProperties.isCompatibleLeaves(otherProperties) ? thisProperties.getCellKit().getCellForLeaves(state.getValue(LeavesBlock.DISTANCE)) : CellNull.NULL_CELL;
-    }
-
-    @Override
-    public GrowSignal growSignal(Level level, BlockPos pos, GrowSignal signal) {
-        if (signal.step()) // This is always placed at the beginning of every growSignal function.
-        {
-            this.branchOut(level, pos, signal); // When a growth signal hits a leaf block it attempts to become a tree branch.}
-        }
-        return signal;
-    }
-
-    /**
-     * Will place a leaves block if the position is air and it's possible to create one there. Otherwise it will check
-     * to see if the block is already there.
-     *
-     * @param level            The {@link Level} instance.
-     * @param pos              The {@link BlockPos} to check.
-     * @param leavesProperties The {@link LeavesProperties} required.
-     * @return {@code true} if the leaves are at the given {@link BlockPos}; {@code false} otherwise.
-     */
-    public boolean needLeaves(Level level, BlockPos pos, LeavesProperties leavesProperties, Species species) {
-        if (level.isEmptyBlock(pos)) { // Place leaves if air.
-            return this.growLeavesIfLocationIsSuitable(level, leavesProperties, pos, leavesProperties.getCellKit().getDefaultHydration());
-        } else { // Otherwise check if there's already this type of leaves there.
-            final TreePart treePart = TreeHelper.getTreePart(level.getBlockState(pos));
-
-
-            return treePart instanceof DynamicLeavesBlock && species.isValidLeafBlock((DynamicLeavesBlock) treePart); // Check if this leaves are valid for the species
-        }
-    }
-
-    public GrowSignal branchOut(Level level, BlockPos pos, GrowSignal signal) {
-
-        Species species = signal.getSpecies();
-        LeavesProperties leavesProperties = species.getLeavesProperties();
-
-        //Check to be sure the placement for a branch is valid by testing to see if it would first support a leaves block
-        if (!needLeaves(level, pos, leavesProperties, species)) {
-            signal.success = false;
-            return signal;
-        }
-
-        //Check to see if there's neighboring branches and abort if there's any found.
-        if (BranchBlock.isNextToBranch(level, pos, signal.dir.getOpposite())) {
-            signal.success = false;
-            return signal;
-        }
-
-        boolean hasLeaves = false;
-
-        for (Direction dir : Direction.values()) {
-            if (needLeaves(level, pos.relative(dir), leavesProperties, species)) {
-                hasLeaves = true;
-                break;
-            }
-        }
-
-        if (hasLeaves) {
-            //Finally set the leaves block to a branch
-            Family family = species.getFamily();
-            family.getBranchForPlacement(level, species, pos).ifPresent(branch ->
-                    branch.setRadius(level, pos, family.getPrimaryThickness(), null)
-            );
-            signal.radius = family.getSecondaryThickness();//For the benefit of the parent branch
-        }
-
-        signal.success = hasLeaves;
-
-        return signal;
-    }
-
-    @Override
-    public int probabilityForBlock(BlockState state, BlockGetter level, BlockPos pos, BranchBlock from) {
-        return from.getFamily().isCompatibleDynamicLeaves(from.getFamily().getCommonSpecies(), state, level, pos) ? 2 : 0;
     }
 
     //////////////////////////////
@@ -750,6 +786,15 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
     @Override
     public float getShadeBrightness(BlockState state, BlockGetter level, BlockPos pos) {
         return 0.2F;
+    }
+
+    @Override
+    public void animateTick(BlockState state, Level level, BlockPos pos, RandomSource random) {
+        if (properties.hasTickParticles && properties.getPrimitiveLeavesBlock().isPresent()) {
+            properties.getPrimitiveLeavesBlock().ifPresent((b)->b.animateTick(state,level,pos,random));
+        } else {
+            super.animateTick(state, level, pos, random);
+        }
     }
 
 }
