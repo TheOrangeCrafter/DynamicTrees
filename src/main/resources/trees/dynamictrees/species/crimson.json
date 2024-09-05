@@ -23,6 +23,14 @@
         "sapling": "dynamictrees:block/smartmodel/mushroom_round"
     },
     "features": [
+        "clear_volume",
+        "shroomlight",
+        {
+            "name": "bottom_flare",
+            "properties": {
+                "min_radius": 7
+            }
+        },
         {
             "name": "vines",
             "properties": {
@@ -31,14 +39,6 @@
                 "tip_block": "weeping_vines",
                 "max_length": 5,
                 "quantity": 7
-            }
-        },
-        "clear_volume",
-        "shroomlight",
-        {
-            "name": "bottom_flare",
-            "properties": {
-                "min_radius": 7
             }
         }
     ],

@@ -24,6 +24,15 @@
     "acceptable_growth_blocks": ["crimson_nylium"],
     "features": [
         {
+            "name": "mound",
+            "properties": {
+                "mound_cutoff_radius": 999
+            }
+        },
+        "clear_volume",
+        "shroomlight",
+        "bottom_flare",
+        {
             "name": "vines",
             "properties": {
                 "vine_type": "ceiling",
@@ -32,15 +41,6 @@
                 "max_length": 5,
                 "quantity": 7
             }
-        },
-        {
-            "name": "mound",
-            "properties": {
-                "mound_cutoff_radius": 999
-            }
-        },
-        "clear_volume",
-        "shroomlight",
-        "bottom_flare"
+        }
     ]
 }

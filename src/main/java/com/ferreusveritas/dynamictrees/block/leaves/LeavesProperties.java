@@ -138,7 +138,7 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
         }
 
         @Override
-        public boolean updateTick(Level level, BlockPos pos, BlockState state, RandomSource rand) {
+        public boolean updateTick(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand) {
             return false;
         }
     }.setRegistryName(DTTrees.NULL).setBlockRegistryName(DTTrees.NULL);
@@ -583,7 +583,7 @@ public class LeavesProperties extends RegistryEntry<LeavesProperties> implements
     ///////////////////////////////////////////
 
 
-    public boolean updateTick(Level level, BlockPos pos, BlockState state, RandomSource rand) {
+    public boolean updateTick(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand) {
         return shouldAge(false, state);
     }
 

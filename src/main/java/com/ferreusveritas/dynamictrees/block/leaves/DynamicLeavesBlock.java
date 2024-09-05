@@ -91,30 +91,34 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         this.properties = properties;
     }
 
-    public LeavesProperties getProperties(BlockState blockState) {
+    public LeavesProperties getProperties() {
         return properties;
+    }
+    @Deprecated
+    public LeavesProperties getProperties(BlockState blockState) {
+        return getProperties();
     }
 
     @Override
     public Family getFamily(BlockState state, BlockGetter level, BlockPos pos) {
-        return getProperties(state).getFamily();
+        return getProperties().getFamily();
     }
 
     // Get Leaves-specific flammability
     @Override
     public int getFlammability(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
-        return this.getProperties(level.getBlockState(pos)).getFlammability();
+        return this.getProperties().getFlammability();
     }
 
     // Get Leaves-specific fire spread speed
     @Override
     public int getFireSpreadSpeed(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
-        return this.getProperties(level.getBlockState(pos)).getFireSpreadSpeed();
+        return this.getProperties().getFireSpreadSpeed();
     }
 
     @Override
     public boolean isFlammable(BlockState state, BlockGetter level, BlockPos pos, Direction face) {
-        return this.getFlammability(state, level, pos, face) > 0 || face == Direction.UP;
+        return this.getFlammability(state, level, pos, face) > 0;
     }
 
     @Override
@@ -124,12 +128,12 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public float getDestroyProgress(BlockState state, Player player, BlockGetter level, BlockPos pos) {
-        return getProperties(state).getPrimitiveLeaves().getDestroyProgress(player, level, pos);
+        return getProperties().getPrimitiveLeaves().getDestroyProgress(player, level, pos);
     }
 
     @Override
     public ItemStack getCloneItemStack(BlockState state, HitResult target, BlockGetter level, BlockPos pos, Player player) {
-        return getProperties(state).getPrimitiveLeavesItemStack();
+        return getProperties().getPrimitiveLeavesItemStack();
     }
 
     ///////////////////////////////////////////
@@ -138,7 +142,9 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public int age(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, SafeChunkBounds safeBounds) {
-        updateLeaves(level, pos, state, rand,safeBounds == SafeChunkBounds.ANY_WG,null);
+        if (!removeIfLightIsInadequate(state, level, pos, rand)){
+            updateLeaves(level, pos, state, rand,safeBounds == SafeChunkBounds.ANY_WG,null);
+        }
         return state.getValue(DISTANCE);
     }
 
@@ -151,11 +157,8 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         double attempts = DTConfigs.TREE_GROWTH_FOLDING.get() * DTConfigs.TREE_GROWTH_MULTIPLIER.get();
 
         if (attempts >= 1.0f || rand.nextFloat() < attempts) {
-            if (getProperties(state).updateTick(level, pos, state, rand)) {
-                if (!hasAdequateLight(state, level, getProperties(state), pos)) {
-                    level.removeBlock(pos, false); // No water, no light ... no leaves.
-                    return;
-                }
+            if (removeIfLightIsInadequate(state, level, pos, rand)) {
+                return;
             }
         }
         //Every once in a blue moon, age the leaves
@@ -179,13 +182,19 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         updateHydro(level, pos, state, false);
     }
 
+    /**
+     * Pulses recursively through the canopy, updating hydro and growing around if possible.
+     * If visitedPositions is null, it is not recursive and only the first block will be updated.
+     * @param visitedPositions keeps track of visited blocks for recursive calls. Set to null to make it pulse this block only.
+     * @return the new hydro value
+     */
     public int updateLeaves(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, boolean worldGen, @Nullable HashSet<BlockPos> visitedPositions){
         boolean recursive = visitedPositions != null;
         if (recursive){
             if (visitedPositions.contains(pos)) return 0;
             visitedPositions.add(pos);
         }
-        final LeavesProperties leavesProperties = getProperties(state);
+        final LeavesProperties leavesProperties = getProperties();
         int newHydro = updateHydro(level, pos, state, worldGen);
         //Grows new leaves around
         // We should do this even if the hydro is only 1.  Since there could be adjacent branch blocks that could use a leaves block
@@ -208,13 +217,6 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         return newHydro;
     }
 
-    //TICK -> Destroy leaves if invalid
-
-    //NEIGHBOR UPDATE -> recalculate hydro
-
-    //TREE PULSE -> recalculate hydro
-    //              grows new leaves around (recursive)
-
     protected boolean canCheckSurroundings(LevelAccessor accessor, BlockPos pos) {
         if (accessor instanceof Level level){
             // Check 2 blocks away for loaded chunks
@@ -227,29 +229,36 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         return accessor.isAreaLoaded(pos, 2);
     }
 
-    public int updateHydro(LevelAccessor level, BlockPos pos, BlockState state, boolean worldGen){
-        final LeavesProperties leavesProperties = getProperties(state);
+    //TICK -> Destroy leaves if invalid
+    //NEIGHBOR UPDATE -> recalculate hydro
+    //TREE PULSE -> recalculate hydro
+    //              grows new leaves around (recursive)
+    public int updateHydro(LevelAccessor accesor, BlockPos pos, BlockState state, boolean worldGen){
+        final LeavesProperties leavesProperties = getProperties();
         final int oldHydro = state.getValue(DISTANCE);
 
-        if (!canCheckSurroundings(level, pos)) return oldHydro;
+        if (!canCheckSurroundings(accesor, pos)) return oldHydro;
 
         // Check hydration level.  Dry leaves are dead leaves.
-        final int newHydro = getHydrationLevelFromNeighbors(level, pos, leavesProperties);
+        final int newHydro = getHydrationLevelFromNeighbors(accesor, pos, leavesProperties);
 
         if (oldHydro != newHydro) { // Only update if the hydro has changed. A little performance gain.
-            BlockState placeState = getLeavesBlockStateForPlacement(level, pos, leavesProperties.getDynamicLeavesState(newHydro), oldHydro, worldGen);
+            BlockState placeState = getLeavesBlockStateForPlacement(accesor, pos, leavesProperties.getDynamicLeavesState(newHydro), oldHydro, worldGen);
             // We do not use the 0x02 flag(update client) for performance reasons. The clients do not need to know the hydration level of the leaves blocks as it
             // does not affect appearance or behavior, unless appearanceChangesWithHydro. For the same reason we use the 0x04 flag to prevent the block from being re-rendered.
-            // however if the new hydro is 0, it means the leaves were removed and we do need to update.
-            int flag = newHydro == 0 ? 3 : appearanceChangesWithHydro(oldHydro, newHydro) ? 2 : 4;
-            level.setBlock(pos, placeState, flag);
+            // however if the new hydro is 0, it means the leaves were removed and we do need to update, so the flag is 3.
+            int flag = newHydro == 0 ? 3 : (appearanceChangesWithHydro(oldHydro, newHydro) ? 2 : 4);
+            if (newHydro == 0 && !worldGen
+                    && (accesor instanceof Level level)
+                    //if the old hydro is the default then its most likely a block that was just placed and failed
+                    && oldHydro != getProperties().getCellKit().getDefaultHydration()) {
+                dropResources(state, level, pos);
+            }
+            accesor.setBlock(pos, placeState, flag);
         }
         return newHydro;
     }
 
-    /**
-     * Whether the leaves have different looks
-     */
     public boolean appearanceChangesWithHydro(int oldHydro, int newHydro) {
         return false;
     }
@@ -367,6 +376,16 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         return level.getBrightness(LightLayer.SKY, pos) >= (TreeHelper.isLeaves(state) ? leavesProperties.getLightRequirement() - 2 : leavesProperties.getLightRequirement());
     }
 
+    public boolean removeIfLightIsInadequate(BlockState state, LevelAccessor level, BlockPos pos, RandomSource rand){
+        if (getProperties().updateTick(level, pos, state, rand)) {
+            if (!hasAdequateLight(state, level, getProperties(), pos)) {
+                level.removeBlock(pos, false); // No water, no light ... no leaves.
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Checks if the {@link DynamicLeavesBlock} at the given {@link BlockPos} is at the bottom of the stack.
      *
@@ -409,7 +428,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public Cell getHydrationCell(BlockGetter level, BlockPos pos, BlockState state, Direction dir, LeavesProperties otherProperties) {
-        LeavesProperties thisProperties = getProperties(state);
+        LeavesProperties thisProperties = getProperties();
         return thisProperties.isCompatibleLeaves(otherProperties) ? thisProperties.getCellKit().getCellForLeaves(state.getValue(LeavesBlock.DISTANCE)) : CellNull.NULL_CELL;
     }
 
@@ -431,7 +450,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
      * @param leavesProperties The {@link LeavesProperties} required.
      * @return {@code true} if the leaves are at the given {@link BlockPos}; {@code false} otherwise.
      */
-    public boolean needLeaves(Level level, BlockPos pos, LeavesProperties leavesProperties, Species species, Boolean pulseLeavesIfFound) {
+    public boolean needLeaves(Level level, BlockPos pos, LeavesProperties leavesProperties, Species species) {
         if (level.isEmptyBlock(pos)) { // Place leaves if air.
             return this.growLeavesIfLocationIsSuitable(level, leavesProperties, pos, leavesProperties.getCellKit().getDefaultHydration());
         } else { // Otherwise check if there's already this type of leaves there.
@@ -447,7 +466,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         LeavesProperties leavesProperties = species.getLeavesProperties();
 
         //Check to be sure the placement for a branch is valid by testing to see if it would first support a leaves block
-        if (!needLeaves(level, pos, leavesProperties, species, true)) {
+        if (!needLeaves(level, pos, leavesProperties, species)) {
             signal.success = false;
             return signal;
         }
@@ -461,7 +480,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
         boolean hasLeaves = false;
         //Check leaves conditions before expanding the canopy, otherwise it will always be true
         for (Direction dir : Direction.values()) {
-            if (needLeaves(level, pos.relative(dir), leavesProperties, species, false)) {
+            if (needLeaves(level, pos.relative(dir), leavesProperties, species)) {
                 hasLeaves = true;
                 break;
             }
@@ -635,7 +654,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public boolean isShearable(@Nonnull ItemStack item, Level level, BlockPos pos) {
-        return this.getProperties(level.getBlockState(pos)).doRequireShears();
+        return this.getProperties().doRequireShears();
     }
 
     @Override
@@ -654,7 +673,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
      * @return The {@link List} of {@link ItemStack}s to drop.
      */
     public List<ItemStack> getDrops(@Nullable Player player, ItemStack item, Level level, BlockPos pos, int fortune) {
-        return new ArrayList<>(Collections.singletonList(this.getProperties(level.getBlockState(pos)).getPrimitiveLeavesItemStack()));
+        return new ArrayList<>(Collections.singletonList(this.getProperties().getPrimitiveLeavesItemStack()));
     }
 
     @Override
@@ -669,7 +688,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
             lootTable = level.getServer().getLootData().getLootTable(getLootTable());
         } else {
             pos = BlockPos.containing(originPos.x, originPos.y, originPos.z);
-            LeavesProperties leavesProperties = getProperties(state);
+            LeavesProperties leavesProperties = getProperties();
             species = getExactSpecies(level, pos, leavesProperties);
             lootTable = leavesProperties.getBlockLootTable(level.getServer().getLootData(), species);
         }
@@ -746,7 +765,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public int getRadiusForConnection(BlockState state, BlockGetter level, BlockPos pos, BranchBlock from, Direction side, int fromRadius) {
-        return getProperties(state).getRadiusForConnection(state, level, pos, from, side, fromRadius);
+        return getProperties().getRadiusForConnection(state, level, pos, from, side, fromRadius);
     }
 
     @Override
