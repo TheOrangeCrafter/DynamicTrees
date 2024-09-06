@@ -103,21 +103,28 @@ public class FalloverAnimationHandler implements AnimationHandler {
     protected void flingLeavesParticles(FallingTreeEntity entity, float fallSpeed){
         int bounces = getData(entity).bounces;
         if (bounces > 1) return;
-        double bounceDecay = Math.exp(-bounces);
+        int maxParticleBlocks =  DTConfigs.MAX_FALLING_TREE_LEAVES_PARTICLES.get();
+        if (maxParticleBlocks == 0) return;
+        double limitChance = 1;
+        if (entity.getDestroyData().getNumLeaves() > maxParticleBlocks){
+            limitChance = maxParticleBlocks / (double)entity.getDestroyData().getNumLeaves();
+        }
+        limitChance *= Math.exp(-bounces);
         BranchDestructionData data = entity.getDestroyData();
         Direction.Axis toolAxis = data.toolDir.getAxis();
+        int particleCount = bounces == 0 ? (int)(fallSpeed*5) : 1;
         if (toolAxis == Direction.Axis.Y) return; //this one isn't possible anyways
         Vec3 w = entity.getForward().scale(fallSpeed * data.toolDir.getAxisDirection().getStep());
         if (toolAxis == Direction.Axis.X) w = new Vec3(w.z, w.x, w.y);
-        double speedVar = 0.2f * bounceDecay;
+        double speedVar = 0;
         RandomSource rand = entity.level().random;
         for (int i=0; i<data.getNumLeaves(); i++){
             BlockPos leaves = data.getLeavesRelPos(i).offset(data.basePos);
             double r = -0.1 * (leaves.getY() - data.basePos.getY()) * fallSpeed;
             Vec3 velocity = w.scale(r);
             Vec3 newPos = getRelativeLeavesPosition(entity, leaves.getCenter());
-            for (int j=0; j<fallSpeed*10; j++){
-                if (rand.nextDouble() < bounceDecay){
+            for (int j=0; j<particleCount; j++){
+                if (rand.nextDouble() < limitChance){
                     BlockState leavesState = entity.getDestroyData().getLeavesBlockState(i);
                     if (leavesState != null)
                         entity.level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, leavesState),

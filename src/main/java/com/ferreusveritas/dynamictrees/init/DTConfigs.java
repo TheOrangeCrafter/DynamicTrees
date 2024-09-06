@@ -8,7 +8,6 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
-import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.File;
@@ -62,6 +61,7 @@ public class DTConfigs {
     public static final ForgeConfigSpec.BooleanValue REPLACE_VANILLA_SAPLING;
     public static final ForgeConfigSpec.BooleanValue REPLACE_NYLIUM_FUNGI;
     public static final ForgeConfigSpec.BooleanValue CANCEL_VANILLA_VILLAGE_TREES;
+    public static final ForgeConfigSpec.IntValue MAX_FALLING_TREE_LEAVES_PARTICLES;
 
     public static final ForgeConfigSpec.BooleanValue PODZOL_GEN;
 
@@ -167,6 +167,8 @@ public class DTConfigs {
                 define("replaceNyliumFungi", true);
         CANCEL_VANILLA_VILLAGE_TREES = COMMON_BUILDER.comment("If enabled, cancels the non-dynamic trees that spawn with vanilla villages.").
                 define("cancelVanillaVillageTrees", true);
+        MAX_FALLING_TREE_LEAVES_PARTICLES = SERVER_BUILDER.comment("The maximum number of leaves blocks that will fling particles when a falling tree crashes into the ground. Higher values might have a performance impact.").
+                defineInRange("growthFolding", 400, 0, 4096);
         COMMON_BUILDER.pop();
 
         SERVER_BUILDER.comment("World Generation Settings").push("world");
