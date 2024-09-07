@@ -105,32 +105,41 @@ public class FalloverAnimationHandler implements AnimationHandler {
         if (bounces > 1) return;
         int maxParticleBlocks =  DTConfigs.MAX_FALLING_TREE_LEAVES_PARTICLES.get();
         if (maxParticleBlocks == 0) return;
-        double limitChance = 1;
-        if (entity.getDestroyData().getNumLeaves() > maxParticleBlocks){
-            limitChance = maxParticleBlocks / (double)entity.getDestroyData().getNumLeaves();
-        }
-        limitChance *= Math.exp(-bounces);
+        
         BranchDestructionData data = entity.getDestroyData();
         Direction.Axis toolAxis = data.toolDir.getAxis();
-        int particleCount = bounces == 0 ? (int)(fallSpeed*5) : 1;
         if (toolAxis == Direction.Axis.Y) return; //this one isn't possible anyways
-        Vec3 w = entity.getForward().scale(fallSpeed * data.toolDir.getAxisDirection().getStep());
-        if (toolAxis == Direction.Axis.X) w = new Vec3(w.z, w.x, w.y);
-        double speedVar = 0;
+        
+        double limitChance = 1;
+        if (entity.getDestroyData().getNumLeaves() > maxParticleBlocks)
+            limitChance = maxParticleBlocks / (double)entity.getDestroyData().getNumLeaves();
+        limitChance *= Math.exp(-bounces);
+
         RandomSource rand = entity.level().random;
+        int particleCount = bounces == 0 ? (int)(fallSpeed*5) : 1;
+        
+        Vec3 angularVel = entity.getForward().scale(fallSpeed * -data.toolDir.getAxisDirection().getStep());
+        //on the X axis, the entity forward is rotated, so we rotate the angular velocity back
+        if (toolAxis == Direction.Axis.X) angularVel = new Vec3(angularVel.z, angularVel.x, angularVel.y);
+
         for (int i=0; i<data.getNumLeaves(); i++){
             BlockPos leaves = data.getLeavesRelPos(i).offset(data.basePos);
-            double r = -0.1 * (leaves.getY() - data.basePos.getY()) * fallSpeed;
-            Vec3 velocity = w.scale(r);
-            Vec3 newPos = getRelativeLeavesPosition(entity, leaves.getCenter());
-            for (int j=0; j<particleCount; j++){
-                if (rand.nextDouble() < limitChance){
-                    BlockState leavesState = entity.getDestroyData().getLeavesBlockState(i);
-                    if (leavesState != null)
-                        entity.level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, leavesState),
-                                newPos.x+rand.nextFloat(), newPos.y+rand.nextFloat(), newPos.z+rand.nextFloat(),
-                                velocity.x+rand.nextFloat()*speedVar - speedVar/2f, velocity.y+rand.nextFloat()*speedVar - speedVar/2f, velocity.z+rand.nextFloat()*speedVar - speedVar/2f);
-                }
+            double r = leaves.getY() - data.basePos.getY();
+            Vec3 velocity = angularVel.scale(r);
+            BlockState leavesState = entity.getDestroyData().getLeavesBlockState(i);
+
+            spawnParticlesAtLeaves(entity, leaves, leavesState, velocity, rand, particleCount, limitChance);
+        }
+    }
+
+    protected void spawnParticlesAtLeaves(FallingTreeEntity entity, BlockPos leavesPos, BlockState leavesState, Vec3 velocity, RandomSource rand, int particleCount, double limitChance){
+        Vec3 newPos = getRelativeLeavesPosition(entity, leavesPos.getCenter());
+        for (int j=0; j<particleCount; j++){
+            if (rand.nextDouble() < limitChance){
+                if (leavesState != null)
+                    entity.level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, leavesState),
+                            newPos.x+rand.nextFloat(), newPos.y+rand.nextFloat(), newPos.z+rand.nextFloat(),
+                            velocity.x+rand.nextFloat(), velocity.y+rand.nextFloat(), velocity.z+rand.nextFloat());
             }
         }
     }
