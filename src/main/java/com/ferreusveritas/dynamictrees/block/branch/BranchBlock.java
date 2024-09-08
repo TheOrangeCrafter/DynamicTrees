@@ -24,6 +24,7 @@ import com.ferreusveritas.dynamictrees.util.SimpleVoxmap.Cell;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
@@ -576,19 +577,28 @@ public abstract class BranchBlock extends BlockWithDynamicHardness implements Tr
             return;
         }
 
-        if (toBlock == Blocks.AIR) { // Block was set to air improperly.
-            level.setBlock(pos, state, 0); // Set the block back and attempt a proper breaking.
-            this.sloppyBreak(level, pos, DestroyType.VOID);
-            this.setBlockStateIgnored(level, pos, BlockStates.AIR, 2); // Set back to air in case the sloppy break failed to do so.
-            return;
+        boolean foundFire = false;
+        for (Direction offset : Direction.values()){
+            BlockPos offPos = pos.offset(offset.getNormal());
+            if (level.getBlockState(offPos).is(BlockTags.FIRE)){
+                foundFire = true;
+                break;
+            }
         }
-        if (toBlock == Blocks.FIRE) { // Block has burned.
+
+        if (foundFire) { // Block has burned.
             level.setBlock(pos, state, 0); // Set the branch block back and attempt a proper breaking.
             this.sloppyBreak(level, pos, DestroyType.FIRE); // Applies fire effects to falling branches.
             //this.setBlockStateIgnored(level, pos, Blocks.FIRE.getDefaultState(), 2); // Disabled because the fire is too aggressive.
             this.setBlockStateIgnored(level, pos, BlockStates.AIR, 2); // Set back to air instead.
             return;
+        } else if (toBlock == Blocks.AIR){
+            level.setBlock(pos, state, 0); // Set the block back and attempt a proper breaking.
+            this.sloppyBreak(level, pos, DestroyType.VOID);
+            this.setBlockStateIgnored(level, pos, BlockStates.AIR, 2); // Set back to air in case the sloppy break failed to do so.
+            return;
         }
+
         if (/*!toBlock.entity(toBlockState) && */level.getBlockEntity(pos) == null) { // Block seems to be a pure BlockState based block.
             level.setBlock(pos, state, 0); // Set the branch block back and attempt a proper breaking.
             this.sloppyBreak(level, pos, DestroyType.VOID);
