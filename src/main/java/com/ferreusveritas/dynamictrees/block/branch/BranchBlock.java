@@ -577,12 +577,14 @@ public abstract class BranchBlock extends BlockWithDynamicHardness implements Tr
             return;
         }
 
-        boolean foundFire = false;
-        for (Direction offset : Direction.values()){
-            BlockPos offPos = pos.offset(offset.getNormal());
-            if (level.getBlockState(offPos).is(BlockTags.FIRE)){
-                foundFire = true;
-                break;
+        boolean foundFire = toBlockState.is(BlockTags.FIRE);
+        if (!foundFire){
+            for (Direction offset : Direction.values()){
+                BlockPos offPos = pos.offset(offset.getNormal());
+                if (level.getBlockState(offPos).is(BlockTags.FIRE)){
+                    foundFire = true;
+                    break;
+                }
             }
         }
 
