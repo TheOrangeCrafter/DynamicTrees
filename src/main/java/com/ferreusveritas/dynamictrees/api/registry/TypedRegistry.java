@@ -159,7 +159,7 @@ public class TypedRegistry<V extends RegistryEntry<V>> extends SimpleRegistry<V>
 
     }
 
-    public static JsonObject putJsonRegistryName(final JsonObject jsonObject, final ResourceLocation registryName) {
+    public synchronized static JsonObject putJsonRegistryName(final JsonObject jsonObject, final ResourceLocation registryName) {
         jsonObject.add(Resources.RESOURCE_LOCATION.toString(), new JsonPrimitive(registryName.toString()));
         return jsonObject;
     }

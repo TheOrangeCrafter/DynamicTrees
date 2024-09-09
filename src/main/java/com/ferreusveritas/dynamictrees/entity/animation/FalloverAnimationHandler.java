@@ -7,12 +7,16 @@ import com.ferreusveritas.dynamictrees.data.DTEntityTypeTags;
 import com.ferreusveritas.dynamictrees.entity.FallingTreeEntity;
 import com.ferreusveritas.dynamictrees.init.DTConfigs;
 import com.ferreusveritas.dynamictrees.tree.species.Species;
+import com.ferreusveritas.dynamictrees.util.BranchDestructionData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -22,7 +26,6 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
-import org.joml.Vector3f;
 
 import java.util.HashSet;
 import java.util.List;
@@ -77,6 +80,79 @@ public class FalloverAnimationHandler implements AnimationHandler {
         }
     }
 
+    private Vec3 rotateAroundAxis(Vec3 in, Vec3 axis, double theta){
+        double x = in.x;
+        double y = in.y;
+        double z = in.z;
+        double u = axis.x;
+        double v = axis.y;
+        double w = axis.z;
+        double v1 = u * x + v * y + w * z;
+        double xPrime = u* v1 *(1d - Math.cos(theta))
+                + x*Math.cos(theta)
+                + (-w*y + v*z)*Math.sin(theta);
+        double yPrime = v* v1 *(1d - Math.cos(theta))
+                + y*Math.cos(theta)
+                + (w*x - u*z)*Math.sin(theta);
+        double zPrime = w* v1 *(1d - Math.cos(theta))
+                + z*Math.cos(theta)
+                + (-v*x + u*y)*Math.sin(theta);
+        return new Vec3(xPrime, yPrime, zPrime);
+    }
+
+    protected void flingLeavesParticles(FallingTreeEntity entity, float fallSpeed){
+        int bounces = getData(entity).bounces;
+        if (bounces > 1) return;
+        int maxParticleBlocks =  DTConfigs.MAX_FALLING_TREE_LEAVES_PARTICLES.get();
+        if (maxParticleBlocks == 0) return;
+        
+        BranchDestructionData data = entity.getDestroyData();
+        Direction.Axis toolAxis = data.toolDir.getAxis();
+        if (toolAxis == Direction.Axis.Y) return; //this one isn't possible anyways
+        
+        double limitChance = 1;
+        if (entity.getDestroyData().getNumLeaves() > maxParticleBlocks)
+            limitChance = maxParticleBlocks / (double)entity.getDestroyData().getNumLeaves();
+        limitChance *= Math.exp(-bounces);
+
+        RandomSource rand = entity.level().random;
+        int particleCount = bounces == 0 ? (int)(fallSpeed*5) : 1;
+        
+        Vec3 angularVel = entity.getForward().scale(fallSpeed * -data.toolDir.getAxisDirection().getStep());
+        //on the X axis, the entity forward is rotated, so we rotate the angular velocity back
+        if (toolAxis == Direction.Axis.X) angularVel = new Vec3(angularVel.z, angularVel.x, angularVel.y);
+
+        for (int i=0; i<data.getNumLeaves(); i++){
+            BlockPos leaves = data.getLeavesRelPos(i).offset(data.basePos);
+            double r = leaves.getY() - data.basePos.getY();
+            Vec3 velocity = angularVel.scale(r);
+            BlockState leavesState = entity.getDestroyData().getLeavesBlockState(i);
+
+            spawnParticlesAtLeaves(entity, leaves, leavesState, velocity, rand, particleCount, limitChance);
+        }
+    }
+
+    protected void spawnParticlesAtLeaves(FallingTreeEntity entity, BlockPos leavesPos, BlockState leavesState, Vec3 velocity, RandomSource rand, int particleCount, double limitChance){
+        Vec3 newPos = getRelativeLeavesPosition(entity, leavesPos.getCenter());
+        for (int j=0; j<particleCount; j++){
+            if (rand.nextDouble() < limitChance){
+                if (leavesState != null)
+                    entity.level().addParticle(new BlockParticleOption(ParticleTypes.BLOCK, leavesState),
+                            newPos.x+rand.nextFloat(), newPos.y+rand.nextFloat(), newPos.z+rand.nextFloat(),
+                            velocity.x+rand.nextFloat(), velocity.y+rand.nextFloat(), velocity.z+rand.nextFloat());
+            }
+        }
+    }
+
+    protected Vec3 getRelativeLeavesPosition(FallingTreeEntity entity, Vec3 leaves){
+        BranchDestructionData data = entity.getDestroyData();
+        float angle = (data.toolDir.getAxis() == Direction.Axis.X ? entity.getYRot() : entity.getXRot()) * -data.toolDir.getAxisDirection().getStep() * 0.0174533f;
+        return rotateAroundAxis(
+                leaves.subtract(data.basePos.getCenter()),
+                new Vec3(-data.toolDir.getStepZ(),0, data.toolDir.getStepX()),
+                angle).add(data.basePos.getCenter()).subtract(0.5,0.5,0.5);
+    }
+
     @Override
     public void initMotion(FallingTreeEntity entity) {
         entity.dataAnimationHandler = new HandlerData();
@@ -97,7 +173,7 @@ public class FalloverAnimationHandler implements AnimationHandler {
 
         if (entity.onGround()) {
             float height = (float) entity.getMassCenter().y * 2;
-            fallSpeed += (0.2 / height);
+            fallSpeed += (float) (0.2 / height);
             addRotation(entity, fallSpeed);
         }
 
@@ -132,6 +208,7 @@ public class FalloverAnimationHandler implements AnimationHandler {
 
         if (fallSpeed > 0 && testCollision(entity)) {
             playEndSound(entity);
+            flingLeavesParticles(entity, fallSpeed);
             addRotation(entity, -fallSpeed);//pull back to before the collision
             getData(entity).bounces++;
             fallSpeed *= -AnimationConstants.TREE_ELASTICITY;//bounce with elasticity
