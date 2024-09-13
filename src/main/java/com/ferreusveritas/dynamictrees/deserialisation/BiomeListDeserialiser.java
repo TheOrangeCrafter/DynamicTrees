@@ -13,26 +13,23 @@ import com.ferreusveritas.dynamictrees.util.holderset.TagsRegexMatchHolderSet;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonPrimitive;
 import net.minecraft.ResourceLocationException;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraftforge.registries.holdersets.OrHolderSet;
 import net.minecraftforge.server.ServerLifecycleHooks;
 import org.apache.logging.log4j.LogManager;
 
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 import java.util.function.Supplier;
 
 /**
- * @author Harley O'Connor, Max Hyper
+ * @author Harley O'Connor
  */
 public final class BiomeListDeserialiser implements JsonDeserialiser<DTBiomeHolderSet> {
 
@@ -44,10 +41,96 @@ public final class BiomeListDeserialiser implements JsonDeserialiser<DTBiomeHold
         return currentServer.registryAccess().registryOrThrow(Registries.BIOME);
     };
 
-    private final VoidApplier<DTBiomeHolderSet, JsonObject> AND_OPERATOR =
+    private static final Applier<DTBiomeHolderSet, String> TAG_APPLIER = (biomeList, tagRegex) -> {
+        tagRegex = tagRegex.toLowerCase(Locale.ENGLISH);
+        final boolean notOperator = usingNotOperator(tagRegex);
+        if (notOperator)
+            tagRegex = tagRegex.substring(1);
+        if (tagRegex.charAt(0) == '#')
+            tagRegex = tagRegex.substring(1);
+
+        try {
+            ResourceLocation tagLocation = new ResourceLocation(tagRegex);
+            TagKey<Biome> tagKey = TagKey.create(Registries.BIOME, tagLocation);
+
+            // TODO UPDATE: This is used as a regex in 1.19.2. Double check!!!
+            (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()).add(new DelayedHolderSet<>(() -> DELAYED_BIOME_REGISTRY.get().getOrCreateTag(tagKey)));
+        } catch (ResourceLocationException e) {
+            return PropertyApplierResult.failure(e.getMessage());
+        }
+
+        // TODO UPDATE
+        // (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()).add(new TagsRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY, tagRegex));
+        return PropertyApplierResult.success();
+    };
+
+    private static final VoidApplier<DTBiomeHolderSet, String> NAME_APPLIER = (biomeList, nameRegex) -> {
+        nameRegex = nameRegex.toLowerCase(Locale.ENGLISH);
+        final boolean notOperator = usingNotOperator(nameRegex);
+        if (notOperator)
+            nameRegex = nameRegex.substring(1);
+
+        String finalNameRegex = nameRegex;
+        (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()).add(new DelayedHolderSet<>(
+                () -> new NameRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY.get().asLookup(), finalNameRegex)));
+    };
+
+    private static boolean usingNotOperator(String categoryString) {
+        return categoryString.charAt(0) == '!';
+    }
+
+    private static final VoidApplier<DTBiomeHolderSet, JsonArray> NAMES_OR_APPLIER = (biomeList, json) -> {
+        final List<String> nameRegexes = JsonResult.forInput(json)
+                .mapEachIfArray(String.class, (Result.SimpleMapper<String, String>) String::toLowerCase)
+                .orElse(Collections.emptyList(), LogManager.getLogger()::error, LogManager.getLogger()::warn);
+
+        List<HolderSet<Biome>> orIncludes = new ArrayList<>();
+        List<HolderSet<Biome>> orExcludes = new ArrayList<>();
+        nameRegexes.forEach(nameRegex -> {
+            nameRegex = nameRegex.toLowerCase(Locale.ENGLISH);
+            final boolean notOperator = usingNotOperator(nameRegex);
+            if (notOperator)
+                nameRegex = nameRegex.substring(1);
+
+        String finalNameRegex = nameRegex;
+        (notOperator ? orExcludes : orIncludes).add(new DelayedHolderSet<>(
+                () -> new NameRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY.get().asLookup(), finalNameRegex)));
+        });
+
+        if (!orIncludes.isEmpty())
+            biomeList.getIncludeComponents().add(new OrHolderSet<>(orIncludes));
+        if (!orExcludes.isEmpty())
+            biomeList.getExcludeComponents().add(new OrHolderSet<>(orExcludes));
+    };
+
+    private static final VoidApplier<DTBiomeHolderSet, JsonArray> TAGS_OR_APPLIER = (biomeList, json) -> {
+        final List<String> nameRegexes = JsonResult.forInput(json)
+                .mapEachIfArray(String.class, (Result.SimpleMapper<String, String>) String::toLowerCase)
+                .orElse(Collections.emptyList(), LogManager.getLogger()::error, LogManager.getLogger()::warn);
+
+        List<HolderSet<Biome>> orIncludes = new ArrayList<>();
+        List<HolderSet<Biome>> orExcludes = new ArrayList<>();
+        nameRegexes.forEach(tagRegex -> {
+            tagRegex = tagRegex.toLowerCase(Locale.ENGLISH);
+            final boolean notOperator = usingNotOperator(tagRegex);
+            if (notOperator)
+                tagRegex = tagRegex.substring(1);
+            if (tagRegex.charAt(0) == '#')
+                tagRegex = tagRegex.substring(1);
+
+            (notOperator ? orExcludes : orIncludes).add(new TagsRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY.get().asLookup(), tagRegex));
+        });
+
+        if (!orIncludes.isEmpty())
+            biomeList.getIncludeComponents().add(new OrHolderSet<>(orIncludes));
+        if (!orExcludes.isEmpty())
+            biomeList.getExcludeComponents().add(new OrHolderSet<>(orExcludes));
+    };
+
+    private final VoidApplier<DTBiomeHolderSet, JsonObject> andOperator =
             (biomes, jsonObject) -> applyAllAppliers(jsonObject, biomes);
 
-    private final VoidApplier<DTBiomeHolderSet, JsonArray> OR_OPERATOR = (biomeList, json) -> {
+    private final VoidApplier<DTBiomeHolderSet, JsonArray> orOperator = (biomeList, json) -> {
         List<HolderSet<Biome>> appliedList = new LinkedList<>();
 
         JsonResult.forInput(json)
@@ -63,69 +146,11 @@ public final class BiomeListDeserialiser implements JsonDeserialiser<DTBiomeHold
             biomeList.getIncludeComponents().add(new OrHolderSet<>(appliedList));
     };
 
-    private final VoidApplier<DTBiomeHolderSet, JsonObject> NOT_OPERATOR = (biomeList, jsonObject) -> {
+    private final VoidApplier<DTBiomeHolderSet, JsonObject> notOperator = (biomeList, jsonObject) -> {
         final DTBiomeHolderSet notBiomeList = new DTBiomeHolderSet();
         applyAllAppliers(jsonObject, notBiomeList);
         biomeList.getExcludeComponents().add(notBiomeList);
     };
-
-    private static boolean usingNotCharacter(String categoryString) {
-        return categoryString.charAt(0) == '!';
-    }
-
-    private final Applier<DTBiomeHolderSet, String> TAG_APPLIER = (biomeList, tagRegex) -> {
-        tagRegex = tagRegex.toLowerCase(Locale.ENGLISH);
-        final boolean notOperator = usingNotCharacter(tagRegex);
-        if (notOperator)
-            tagRegex = tagRegex.substring(1);
-        if (tagRegex.charAt(0) == '#')
-            tagRegex = tagRegex.substring(1);
-
-        try {
-            String[] decomp = ResourceLocation.decompose(tagRegex, ':');
-            String tagLocation = decomp[0]+":"+decomp[1];
-            (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()).add(new DelayedHolderSet<>(
-                            () -> new TagsRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY.get().asLookup(), tagLocation)));
-        } catch (ResourceLocationException e) {
-            return PropertyApplierResult.failure(e.getMessage());
-        }
-
-        return PropertyApplierResult.success();
-    };
-
-    private final Applier<DTBiomeHolderSet, String> NAME_APPLIER = (biomeList, nameRegex) -> {
-        nameRegex = nameRegex.toLowerCase(Locale.ENGLISH);
-        final boolean notOperator = usingNotCharacter(nameRegex);
-        if (notOperator)
-            nameRegex = nameRegex.substring(1);
-
-        try {
-            String[] decomp = ResourceLocation.decompose(nameRegex, ':');
-            String nameLocation = decomp[0]+":"+decomp[1];
-            (notOperator ? biomeList.getExcludeComponents() : biomeList.getIncludeComponents()).add(new DelayedHolderSet<>(
-                    () -> new NameRegexMatchHolderSet<>(DELAYED_BIOME_REGISTRY.get().asLookup(), nameLocation)));
-        } catch (ResourceLocationException e) {
-            return PropertyApplierResult.failure(e.getMessage());
-        }
-
-        return PropertyApplierResult.success();
-    };
-
-
-    private VoidApplier<DTBiomeHolderSet, JsonArray> arrayOrApplier(String applier) {
-        return (biomeList, json) -> {
-            JsonArray array = new JsonArray();
-            JsonResult.forInput(json)
-                    .mapEachIfArray(String.class, (s)->{
-                        JsonObject ob = new JsonObject();
-                        ob.add(applier, new JsonPrimitive(s));
-                        array.add(ob);
-                        return s;
-                    })
-                    .orElse(Collections.emptyList(), LogManager.getLogger()::error, LogManager.getLogger()::warn);
-            OR_OPERATOR.apply(biomeList, array);
-        };
-    }
 
     private final JsonPropertyAppliers<DTBiomeHolderSet> appliers = new JsonPropertyAppliers<>(DTBiomeHolderSet.class);
 
@@ -137,13 +162,13 @@ public final class BiomeListDeserialiser implements JsonDeserialiser<DTBiomeHold
         this.appliers
                 .register("tag", String.class, TAG_APPLIER)
                 .registerArrayApplier("tags", String.class, TAG_APPLIER)
-                .register("tags_or", JsonArray.class, arrayOrApplier("tag"))
+                .register("tags_or", JsonArray.class, TAGS_OR_APPLIER)
                 .register("name", String.class, NAME_APPLIER)
                 .registerArrayApplier("names", String.class, NAME_APPLIER)
-                .register("names_or", JsonArray.class, arrayOrApplier("name"))
-                .registerArrayApplier("AND", JsonObject.class, AND_OPERATOR)
-                .register("OR", JsonArray.class, OR_OPERATOR)
-                .register("NOT", JsonObject.class, NOT_OPERATOR);
+                .register("names_or", JsonArray.class, NAMES_OR_APPLIER)
+                .registerArrayApplier("AND", JsonObject.class, andOperator)
+                .register("OR", JsonArray.class, orOperator)
+                .register("NOT", JsonObject.class, notOperator);
     }
 
     private void applyAllAppliers(JsonObject json, DTBiomeHolderSet biomes) {
