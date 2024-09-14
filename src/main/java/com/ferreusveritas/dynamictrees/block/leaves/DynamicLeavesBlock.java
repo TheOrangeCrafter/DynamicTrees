@@ -142,10 +142,7 @@ public class DynamicLeavesBlock extends LeavesBlock implements TreePart, Ageable
 
     @Override
     public int age(LevelAccessor level, BlockPos pos, BlockState state, RandomSource rand, SafeChunkBounds safeBounds) {
-        if (!removeIfLightIsInadequate(state, level, pos, rand)){
-            updateLeaves(level, pos, state, rand,safeBounds == SafeChunkBounds.ANY_WG,null);
-        }
-        return state.getValue(DISTANCE);
+        return updateLeaves(level, pos, state, rand,safeBounds == SafeChunkBounds.ANY_WG,null);
     }
 
     @Override
