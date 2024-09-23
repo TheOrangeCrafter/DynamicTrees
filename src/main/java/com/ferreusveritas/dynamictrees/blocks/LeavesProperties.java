@@ -89,7 +89,7 @@ public class LeavesProperties implements ILeavesProperties {
 
 		@Override
 		public int getLightRequirement() {
-			return 15;
+			return 0;
 		}
 
 		@Override
